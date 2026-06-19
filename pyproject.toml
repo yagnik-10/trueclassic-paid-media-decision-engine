@@ -19,11 +19,19 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Stage 1 API (FastAPI thin shell).
+api = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.5",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "httpx>=0.27",          # FastAPI TestClient
 ]
-# Stage 3+ modeling/optimizer deps (NOT installed for Stage 0):
+# Stage 3+ modeling/optimizer deps (NOT installed yet):
 modeling = [
     "scikit-learn>=1.4",
     "xgboost>=2.0",

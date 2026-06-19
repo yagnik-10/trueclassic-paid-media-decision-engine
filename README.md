@@ -25,7 +25,8 @@ deviations are recorded in [docs/DECISIONS.md](docs/DECISIONS.md).
 | Deterministic API-envelope-shaped data generator | Incrementality coefficients are **synthetic**, not measured |
 | Planted data-quality defects + explicit quarantine **states** in the artifacts | Execution payloads are **stubbed** (no real OAuth, no live writes) |
 | Golden-scenario business invariants & tolerances | — |
-| (later stages) ingestion adapters & quarantine **service**, XGBoost BAU forecast, adstock–Hill response, SLSQP optimizer, approval/audit, bounded LLM | — |
+| Stage 1 approve/reject decision flow (idempotent; rejected can't execute) | Execution payloads are **stubbed**; the audit is **in-memory** (a durable, append-only audit store is Stage 4) |
+| (later stages) ingestion adapters & quarantine **service**, XGBoost BAU forecast, adstock–Hill response, SLSQP optimizer, **durable** approval/audit, bounded LLM | — |
 
 Stage 0 represents quarantine **states** (e.g. `data_quality_issue` rows and
 `sku_alias.match_status = quarantined`) — it does **not** ship a reusable
@@ -40,13 +41,16 @@ production calibration still requires lift experiments.
 
 ## Build status — staged vertical slice
 
-The system is built as a vertical slice that stays runnable. **Stage 0 is
+The system is built as a vertical slice that stays runnable. **Stages 0–1 are
 complete.**
 
-- **Stage 0 ✅ — Golden scenario + synthetic-truth contract** *(this commit)*:
+- **Stage 0 ✅ — Golden scenario + synthetic-truth contract**:
   canonical schemas, deterministic generator, planted defects, locked business
   invariants with tolerances.
-- Stage 1 — Thin end-to-end shell (Next.js → FastAPI → static recommendation → approve/reject).
+- **Stage 1 ✅ — Thin end-to-end shell**: Next.js page → FastAPI endpoint →
+  static canonical dataset → one **fixed** recommendation → approve/reject with a
+  **stubbed** audit (idempotent approval; a rejected plan cannot execute). The
+  seam works before any real modeling.
 - Stage 2 — Real ingestion adapters (Meta `data/paging`, Google nested `results`), validation, SKU resolution.
 - Stage 3 — Real engine (baselines → XGBoost BAU → cross-fitted residualized adstock–Hill → SLSQP).
 - Stage 4 — Trust & business controls (quantiles, calibration sensitivity, approval/audit, inventory, reserve modes, Looker-ready marts).
@@ -55,18 +59,36 @@ complete.**
 
 ---
 
-## Quickstart (Stage 0)
+## Quickstart
 
 ```bash
-make setup        # python3.13 venv + EXACT locked deps (requirements-lock.txt)
+make setup        # python3.13 venv + EXACT locked deps (engine + API)
 make generate     # write data/canonical/*.csv|parquet|duckdb|manifest.json + data/raw/*.json
-make test         # run the Stage 0 test suite (deterministic)
+make test         # run the test suite (engine + API)
 make fingerprint  # print + verify the full-artifact fingerprint (primary)
 make verify-clean-install   # build a throwaway venv from the lock and run the suite
 ```
 
+### Run the app (Stage 1 thin shell)
+
+Two processes — the FastAPI backend and the Next.js frontend:
+
+```bash
+make api          # FastAPI backend  → http://127.0.0.1:8000  (docs at /docs)
+make web-setup    # one-time: install frontend (Next.js) deps
+make web          # Next.js frontend → http://localhost:3000
+```
+
+Open http://localhost:3000: review the fixed budget-reallocation recommendation
+(current vs recommended per campaign, reason/risk codes, blended-ROAS KPIs) and
+**Approve** or **Reject**. Approve emits **stubbed** Meta/Google execution
+payloads (no live writes); the inventory-constrained campaign is flagged and not
+executed. The backend is single-service (FastAPI) by design — Next.js already
+covers the Node/TS side.
+
 `make setup` installs the **exact tested versions** from `requirements-lock.txt`
-(use `make setup-dev` for the looser pyproject ranges during development).
+(now including the FastAPI/uvicorn/httpx API stack; use `make setup-dev` for the
+looser pyproject ranges during development).
 `make generate` prints row counts, planted-defect counts, and writes
 `manifest.json` (seed, versions, row counts, logical fingerprints). The **main
 reproducibility hash is the full-artifact fingerprint** — it covers every
@@ -140,15 +162,16 @@ inventory, reserve modes (4) · bounded LLM (5) · hardening (6).
 ## Layout
 
 ```
-backend/decision_engine/        decision-engine package
-  config.py               pinned seed, paths, policy constants
-  schemas/                Pandera (canonical) + Pydantic (API envelopes)
-  synth/                  scenario truth, generator, defects, envelope writers, fingerprint
-scripts/                  CLI entrypoints (data generation)
-data/                     generated artifacts (gitignored)
-tests/                    Stage 0 test suite
-docs/                     FINAL_PLAN, DECISIONS, AI_WORKFLOW
-frontend/                 Stage 1 (Next.js) — placeholder
+backend/decision_engine/   decision-engine package
+  config.py                pinned seed, paths, policy constants
+  schemas/                 Pandera (canonical) + Pydantic (API envelopes)
+  synth/                   scenario truth, generator, defects, envelope writers, fingerprint
+backend/api/               Stage 1 FastAPI shell (recommendation + approve/reject audit)
+frontend/                  Stage 1 Next.js page (recommendation review & approval)
+scripts/                   CLI entrypoints (data generation, fingerprint verify)
+data/                      generated artifacts (gitignored)
+tests/                     engine + API test suite
+docs/                      FINAL_PLAN, DECISIONS, AI_WORKFLOW
 ```
 
 ## Tech stack

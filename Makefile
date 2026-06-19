@@ -1,24 +1,30 @@
-# True Classic Paid Media Decision Engine — Paid Media Decision Engine
-# Stage 0 targets. Python 3.13 venv with pinned deps.
+# True Classic Paid Media Decision Engine
+# Python 3.13 venv (pinned deps) for the engine; Node for the Next.js shell.
 
 PYTHON ?= python3.13
 VENV   := .venv
 BIN    := $(VENV)/bin
 PY     := $(BIN)/python
+API_HOST ?= 127.0.0.1
+API_PORT ?= 8000
 PYTHONPATH := .
 export PYTHONPATH
 
-.PHONY: help setup setup-dev generate test lint clean fingerprint verify-clean-install
+.PHONY: help setup setup-dev generate test lint lint-report clean fingerprint \
+        verify-clean-install api web web-setup
 
 help:
 	@echo "make setup      - create venv and install EXACT locked deps (reproducible)"
 	@echo "make setup-dev  - create venv and install from pyproject ranges (dev)"
 	@echo "make generate   - generate the deterministic synthetic dataset"
-	@echo "make test       - run the Stage 0 test suite"
-	@echo "make fingerprint- print the combined dataset fingerprint"
+	@echo "make test       - run the test suite (engine + API)"
+	@echo "make fingerprint- print + verify the full-artifact fingerprint"
 	@echo "make lint       - ruff check (ENFORCING: fails on violations)"
 	@echo "make lint-report- ruff check (non-enforcing report)"
 	@echo "make verify-clean-install - build a throwaway venv from the lock and run tests"
+	@echo "make api        - run the FastAPI backend (http://$(API_HOST):$(API_PORT))"
+	@echo "make web-setup  - install frontend (Next.js) dependencies"
+	@echo "make web        - run the Next.js dev server (http://localhost:3000)"
 	@echo "make clean      - remove generated data and caches"
 
 # Reproducible install: exact locked versions that produce the pinned fingerprint.
@@ -51,6 +57,16 @@ test:
 
 fingerprint:
 	$(PY) scripts/verify_fingerprint.py
+
+# --- Stage 1 thin shell: FastAPI backend + Next.js frontend ----------------
+api:
+	$(BIN)/uvicorn backend.api.main:app --reload --host $(API_HOST) --port $(API_PORT)
+
+web-setup:
+	cd frontend && npm ci
+
+web:
+	cd frontend && npm run dev
 
 # Enforcing: non-zero exit on any violation.
 lint:

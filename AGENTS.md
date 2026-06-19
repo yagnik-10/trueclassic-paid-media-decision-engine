@@ -44,5 +44,8 @@ Keep them green. Tests are deterministic and run in ~1s.
 
 ## Stage map
 Stage 0 (done): schemas + deterministic generator + defects + invariants.
-Next: Stage 1 thin end-to-end shell (Next.js → FastAPI → static recommendation →
-approve/reject). See `docs/FINAL_PLAN.md` §11 for the full order.
+Stage 1 (done): FastAPI thin shell (`backend/api/`) + Next.js page (`frontend/`) —
+one FIXED recommendation + stubbed approve/reject audit. Run with `make api` +
+`make web`.
+Next: Stage 2 real ingestion adapters (Meta `data/paging`, Google nested
+`results`), validation, SKU resolution. See `docs/FINAL_PLAN.md` §11.
