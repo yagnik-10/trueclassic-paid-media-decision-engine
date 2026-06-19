@@ -13,8 +13,11 @@ REC_ID = "REC-FIXED-0001"
 
 @pytest.fixture
 def client():
-    # fresh in-memory audit store per test
+    # fresh in-memory audit store + SKU approvals per test
+    from backend.api import ingestion_service
+
     main.store = DecisionStore()
+    ingestion_service.reset_approvals()
     return TestClient(main.app)
 
 
@@ -100,3 +103,35 @@ def test_unknown_recommendation_404(client):
     r = client.post("/api/recommendation/REC-NOPE/decision",
                     json={"action": "approve", "approver": "m"})
     assert r.status_code == 404
+
+
+# --- Stage 2 ingestion endpoints --------------------------------------------
+def test_ingestion_summary(client):
+    s = client.get("/api/ingestion").json()
+    assert {f["platform"] for f in s["feeds"]} == {"meta", "google", "shopify"}
+    assert s["canonical_fact_rows"] > 0 and s["canonical_commerce_rows"] > 0
+    assert s["dq_issues"]
+    assert s["sku_resolution_summary"].get("needs_approval") == 1
+    assert s["sku_resolution_summary"].get("quarantined") == 1
+
+
+def test_approve_sku_mapping(client):
+    r = client.post("/api/sku-resolution/GG_TC-JOG-BLU/approve",
+                    json={"sku_id": "TC-JOG-BLK", "approver": "marketer@tc"})
+    assert r.status_code == 200
+    assert r.json()["status"] == "approved" and r.json()["sku_id"] == "TC-JOG-BLK"
+    # reflected in a subsequent summary
+    s = client.get("/api/ingestion").json()
+    assert s["sku_resolution_summary"].get("approved") == 1
+
+
+def test_approve_sku_rejects_invalid_candidate(client):
+    r = client.post("/api/sku-resolution/GG_TC-JOG-BLU/approve",
+                    json={"sku_id": "TC-CREW-BLK", "approver": "m"})
+    assert r.status_code == 400  # not in allowed candidates
+
+
+def test_approve_auto_matched_is_rejected(client):
+    r = client.post("/api/sku-resolution/FB_TC-CREW-BLK/approve",
+                    json={"sku_id": "TC-CREW-BLK", "approver": "m"})
+    assert r.status_code == 400

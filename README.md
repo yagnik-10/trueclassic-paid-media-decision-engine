@@ -41,7 +41,7 @@ production calibration still requires lift experiments.
 
 ## Build status — staged vertical slice
 
-The system is built as a vertical slice that stays runnable. **Stages 0–1 are
+The system is built as a vertical slice that stays runnable. **Stages 0–2 are
 complete.**
 
 - **Stage 0 ✅ — Golden scenario + synthetic-truth contract**:
@@ -51,7 +51,13 @@ complete.**
   static canonical dataset → one **fixed** recommendation → approve/reject with a
   **stubbed** audit (idempotent approval; a rejected plan cannot execute). The
   seam works before any real modeling.
-- Stage 2 — Real ingestion adapters (Meta `data/paging`, Google nested `results`), validation, SKU resolution.
+- **Stage 2 ✅ — Real ingestion**: Meta `data/paging` + Google nested `results` +
+  Shopify adapters flatten the raw API-shaped JSON into the canonical model, with
+  two-level (envelope + record) validation & **quarantine**, deterministic **SKU
+  reconciliation** (auto / needs-approval / quarantine with a human approval), and
+  **data-quality defects detected from the feeds** (dedup, missing dates, micros
+  normalization, null new-customer, reconciliation, coverage gaps, label maturity).
+  Surfaced in an **Ingestion & reconciliation** UI view.
 - Stage 3 — Real engine (baselines → XGBoost BAU → cross-fitted residualized adstock–Hill → SLSQP).
 - Stage 4 — Trust & business controls (quantiles, calibration sensitivity, approval/audit, inventory, reserve modes, Looker-ready marts).
 - Stage 5 — Bounded LLM (SKU ranking + grounded narration).

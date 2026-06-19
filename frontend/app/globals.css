@@ -20,7 +20,25 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
+.nav { display: flex; gap: 20px; align-items: center; padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--panel); position: sticky; top: 0; z-index: 10; }
+.nav .brand { font-weight: 700; font-size: 14px; margin-right: auto; }
+.nav a { color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 600; }
+.nav a:hover { color: var(--text); }
+
 .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 24px 64px; }
+
+.sev { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; }
+.sev.high { color: var(--red); background: rgba(227,85,79,.1); }
+.sev.medium { color: var(--amber); background: rgba(224,169,59,.1); }
+.sev.low { color: var(--muted); background: rgba(154,166,189,.1); }
+
+.status-pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+.status-pill.auto_matched { color: var(--green); background: rgba(56,193,114,.1); }
+.status-pill.approved { color: var(--green); background: rgba(56,193,114,.1); }
+.status-pill.needs_approval { color: var(--amber); background: rgba(224,169,59,.12); }
+.status-pill.quarantined { color: var(--red); background: rgba(227,85,79,.12); }
+button.small { padding: 5px 12px; font-size: 12px; }
+.muted { color: var(--muted); }
 
 h1 { font-size: 22px; margin: 0 0 4px; }
 .sub { color: var(--muted); font-size: 13px; margin: 0 0 24px; }

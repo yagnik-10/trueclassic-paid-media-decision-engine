@@ -57,6 +57,48 @@ class ExecutionEvent(BaseModel):
     created_at: str
 
 
+# --- Stage 2: ingestion & reconciliation ------------------------------------
+class FeedStat(BaseModel):
+    platform: str
+    raw: int
+    normalized: int
+    quarantined: int
+
+
+class DqIssue(BaseModel):
+    issue_id: str
+    issue_type: str
+    severity: str
+    entity_type: str
+    entity_ref: str
+    description: str
+    resolution: str
+
+
+class SkuResolutionItem(BaseModel):
+    platform: str
+    platform_product_id: str
+    sku_id: Optional[str] = None
+    status: str  # auto_matched | needs_approval | quarantined | approved
+    confidence: float
+    allowed_candidates: list[str] = Field(default_factory=list)
+
+
+class IngestionSummary(BaseModel):
+    feeds: list[FeedStat]
+    canonical_fact_rows: int
+    canonical_commerce_rows: int
+    total_quarantined: int
+    dq_issues: list[DqIssue]
+    sku_resolutions: list[SkuResolutionItem]
+    sku_resolution_summary: dict[str, int]
+
+
+class SkuApprovalRequest(BaseModel):
+    sku_id: str = Field(min_length=1)
+    approver: str = Field(min_length=1)
+
+
 class DecisionResponse(BaseModel):
     rec_id: str
     action: Literal["approve", "reject"]      # the action that established the decision

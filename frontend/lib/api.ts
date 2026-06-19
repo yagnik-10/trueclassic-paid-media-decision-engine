@@ -59,6 +59,69 @@ export interface DecisionResponse {
   idempotent_replay: boolean;
 }
 
+// --- Stage 2: ingestion & reconciliation -----------------------------------
+export interface FeedStat {
+  platform: string;
+  raw: number;
+  normalized: number;
+  quarantined: number;
+}
+
+export interface DqIssue {
+  issue_id: string;
+  issue_type: string;
+  severity: string;
+  entity_type: string;
+  entity_ref: string;
+  description: string;
+  resolution: string;
+}
+
+export interface SkuResolutionItem {
+  platform: string;
+  platform_product_id: string;
+  sku_id: string | null;
+  status: string;
+  confidence: number;
+  allowed_candidates: string[];
+}
+
+export interface IngestionSummary {
+  feeds: FeedStat[];
+  canonical_fact_rows: number;
+  canonical_commerce_rows: number;
+  total_quarantined: number;
+  dq_issues: DqIssue[];
+  sku_resolutions: SkuResolutionItem[];
+  sku_resolution_summary: Record<string, number>;
+}
+
+export async function getIngestion(): Promise<IngestionSummary> {
+  const res = await fetch(`${API_BASE}/api/ingestion`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`ingestion failed: ${res.status}`);
+  return res.json();
+}
+
+export async function approveSku(
+  platformProductId: string,
+  skuId: string,
+  approver: string,
+): Promise<SkuResolutionItem> {
+  const res = await fetch(
+    `${API_BASE}/api/sku-resolution/${encodeURIComponent(platformProductId)}/approve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sku_id: skuId, approver }),
+    },
+  );
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.detail ?? `approve failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function getRecommendation(): Promise<Recommendation> {
   const res = await fetch(`${API_BASE}/api/recommendation`, { cache: "no-store" });
   if (!res.ok) throw new Error(`recommendation failed: ${res.status}`);

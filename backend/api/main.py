@@ -5,8 +5,17 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.api import ingestion_service
+from backend.api.ingestion_service import SkuApprovalError
 from backend.api.recommendation import REC_ID, build_recommendation
-from backend.api.schemas import DecisionRequest, DecisionResponse, Recommendation
+from backend.api.schemas import (
+    DecisionRequest,
+    DecisionResponse,
+    IngestionSummary,
+    Recommendation,
+    SkuApprovalRequest,
+    SkuResolutionItem,
+)
 from backend.api.store import DecisionConflict, DecisionStore
 
 app = FastAPI(
@@ -29,6 +38,20 @@ store = DecisionStore()
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "stage": "1"}
+
+
+@app.get("/api/ingestion", response_model=IngestionSummary)
+def get_ingestion() -> IngestionSummary:
+    return ingestion_service.summary()
+
+
+@app.post("/api/sku-resolution/{platform_product_id}/approve",
+          response_model=SkuResolutionItem)
+def approve_sku(platform_product_id: str, body: SkuApprovalRequest) -> SkuResolutionItem:
+    try:
+        return ingestion_service.approve_sku(platform_product_id, body.sku_id)
+    except SkuApprovalError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/recommendation", response_model=Recommendation)

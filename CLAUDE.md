@@ -57,12 +57,15 @@ before changing code.
   business invariants, fingerprints.
 
 ## Stage status
-Stages 0–1 are complete: Stage 0 (schemas, generator, defects, invariants,
-governance docs) and Stage 1 (FastAPI thin shell in `backend/api/` + Next.js page
-in `frontend/`, one fixed recommendation + stubbed approve/reject audit). Next is
-Stage 2 (real ingestion adapters). Do **not** implement XGBoost, Hill fitting,
-SLSQP, or the LLM yet — those are Stage 3/5. The Stage 1 recommendation is a
-labelled FIXED placeholder, not an optimizer result.
+Stages 0–2 are complete: Stage 0 (schemas, generator, defects, invariants),
+Stage 1 (FastAPI thin shell + Next.js page, one fixed recommendation + stubbed
+approve/reject audit), Stage 2 (real ingestion in
+`backend/decision_engine/ingestion/` — adapters, validation/quarantine, SKU
+resolution, feed-level data-quality detection, with an Ingestion UI view). Next is
+Stage 3 (real engine: baselines → XGBoost BAU → residualized adstock–Hill →
+SLSQP). Do **not** implement XGBoost, Hill fitting, SLSQP, or the LLM yet. The
+Stage 1 recommendation is still a labelled FIXED placeholder, not an optimizer
+result.
 
 ## Workflow
 - `make setup && make generate && make test` must stay green.

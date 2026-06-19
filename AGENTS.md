@@ -47,5 +47,8 @@ Stage 0 (done): schemas + deterministic generator + defects + invariants.
 Stage 1 (done): FastAPI thin shell (`backend/api/`) + Next.js page (`frontend/`) —
 one FIXED recommendation + stubbed approve/reject audit. Run with `make api` +
 `make web`.
-Next: Stage 2 real ingestion adapters (Meta `data/paging`, Google nested
-`results`), validation, SKU resolution. See `docs/FINAL_PLAN.md` §11.
+Stage 2 (done): real ingestion (`backend/decision_engine/ingestion/`) — Meta/Google/
+Shopify adapters, envelope+record validation/quarantine, SKU reconciliation, and
+feed-level data-quality detection; `GET /api/ingestion` + an Ingestion UI view.
+Next: Stage 3 real engine (baselines → XGBoost BAU → residualized adstock–Hill →
+SLSQP). See `docs/FINAL_PLAN.md` §11.
