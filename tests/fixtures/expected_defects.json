@@ -1,0 +1,30 @@
+{
+  "_comment": "Independent Stage 0 defect contract. Hand-maintained, NOT generated from production constants. If backend defect constants change without updating this file, tests fail by design.",
+  "expected_types": [
+    "duplicate_meta_record",
+    "missing_google_extraction_date",
+    "google_cost_micros_normalization",
+    "sku_alias_mismatch",
+    "sku_candidate_needs_approval",
+    "unknown_sku_quarantine",
+    "null_new_customer_value",
+    "immature_conversion_labels",
+    "attribution_window_mismatch",
+    "platform_revenue_exceeds_shopify",
+    "inconsistent_date_coverage"
+  ],
+  "expected_counts": {
+    "duplicate_meta_record": 1,
+    "missing_google_extraction_date": 3,
+    "google_cost_micros_normalization": 1,
+    "sku_alias_mismatch": 2,
+    "sku_candidate_needs_approval": 1,
+    "unknown_sku_quarantine": 1,
+    "null_new_customer_value": 5,
+    "immature_conversion_labels": 4,
+    "attribution_window_mismatch": 1,
+    "platform_revenue_exceeds_shopify": 1,
+    "inconsistent_date_coverage": 1
+  },
+  "total_expected_issues": 21
+}

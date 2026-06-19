@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.venv-verify/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Env
+.env
+
+# Generated data artifacts (regenerate with `make generate`)
+data/canonical/*
+data/raw/*
+!data/canonical/.gitkeep
+!data/raw/.gitkeep
+
+# Internal latent generator truth — NEVER committed (debug/test opt-in only)
+data/internal/
+
+# Node / frontend (Stage 1)
+node_modules/
+.next/
+
+# OS
+.DS_Store
