@@ -11,6 +11,15 @@ export interface CampaignLine {
   current_spend: number;
   recommended_spend: number;
   delta_pct: number;
+  marginal_roas: number;
+  marginal_roas_downside: number;
+  current_revenue: number;
+  response_slope: number;
+  response_quad: number;
+  forecast_p10: number;
+  forecast_p50: number;
+  forecast_p90: number;
+  forecast_model: string;
   reason_codes: string[];
   risk_flags: string[];
 }
@@ -18,9 +27,12 @@ export interface CampaignLine {
 export interface Kpis {
   blended_roas_current: number;
   blended_roas_projected: number;
+  reported_roas_current: number;
+  reported_roas_projected: number;
   total_current_spend: number;
   total_recommended_spend: number;
   reserve: number;
+  nc_cpa_projected: number;
 }
 
 export type RecommendationStatus = "pending" | "approved" | "rejected";
@@ -32,6 +44,10 @@ export interface Recommendation {
   generated_at: string;
   status: RecommendationStatus;
   is_fixed_placeholder: boolean;
+  engine: string;
+  feasible: boolean;
+  conflicts: string[];
+  marginal_scale_floor: number;
   lines: CampaignLine[];
   kpis: Kpis;
 }

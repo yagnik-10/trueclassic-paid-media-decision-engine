@@ -75,6 +75,12 @@ def decide(rec_id: str, body: DecisionRequest) -> DecisionResponse:
     rec = build_recommendation()
     if rec_id != rec.rec_id or rec_id != REC_ID:
         raise HTTPException(status_code=404, detail=f"unknown recommendation {rec_id}")
+    # an infeasible plan must never be approved/executed (it can still be rejected)
+    if body.action == "approve" and not rec.feasible:
+        raise HTTPException(
+            status_code=422,
+            detail=f"recommendation is infeasible and cannot be approved: {rec.conflicts}",
+        )
     try:
         return store.decide(rec, body.action, body.approver, body.notes)
     except DecisionConflict as exc:

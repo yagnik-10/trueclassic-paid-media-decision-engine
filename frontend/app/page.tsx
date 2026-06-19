@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Charts from "./Charts";
 import {
   type DecisionResponse,
   type Recommendation,
@@ -66,23 +67,29 @@ export default function Page() {
     <div className="wrap">
       <h1>Paid Media Decision Engine</h1>
       <p className="sub">
-        Budget reallocation review · policy: <b>{rec.policy_mode}</b> ·{" "}
-        {rec.is_fixed_placeholder && <span className="badge">Fixed placeholder — not yet optimizer-generated</span>}
+        Budget reallocation · policy: <b>{rec.policy_mode}</b> ·{" "}
+        {rec.is_fixed_placeholder
+          ? <span className="badge">Fixed placeholder</span>
+          : <span className="badge" style={{ color: "var(--green)", borderColor: "rgba(56,193,114,.4)", background: "rgba(56,193,114,.08)" }}>SLSQP optimizer · {rec.feasible ? "feasible" : "infeasible"}</span>}
       </p>
+      {!rec.feasible && rec.conflicts.length > 0 && (
+        <p className="err">Constraint conflicts: {rec.conflicts.join("; ")}</p>
+      )}
 
       <div className="kpis">
         <div className="kpi">
-          <div className="label">Blended ROAS (current → projected)</div>
+          <div className="label">Calibrated ROAS (incremental · enforced floor 4.0×)</div>
           <div className="value">{k.blended_roas_current.toFixed(2)}× → {k.blended_roas_projected.toFixed(2)}×</div>
-          <div className={`delta ${roasDelta >= 0 ? "up" : "down"}`}>{roasDelta >= 0 ? "+" : ""}{roasDelta.toFixed(2)}×</div>
+          <div className={`delta ${roasDelta >= 0 ? "up" : "down"}`}>{roasDelta >= 0 ? "+" : ""}{roasDelta.toFixed(2)}× · enforced ≥ 4.0×</div>
         </div>
         <div className="kpi">
-          <div className="label">Current daily spend</div>
-          <div className="value">{money(k.total_current_spend)}</div>
+          <div className="label">Reported ROAS (platform-reported · context)</div>
+          <div className="value">{k.reported_roas_current.toFixed(2)}× → {k.reported_roas_projected.toFixed(2)}×</div>
+          <div className="delta flat">over-attribution gap</div>
         </div>
         <div className="kpi">
-          <div className="label">Recommended daily spend</div>
-          <div className="value">{money(k.total_recommended_spend)}</div>
+          <div className="label">Daily spend (current → recommended)</div>
+          <div className="value">{money(k.total_current_spend)} → {money(k.total_recommended_spend)}</div>
         </div>
         <div className="kpi">
           <div className="label">Held in reserve</div>
@@ -94,21 +101,23 @@ export default function Page() {
         <thead>
           <tr>
             <th>Campaign</th>
-            <th>Platform</th>
             <th className="num">Current</th>
             <th className="num">Recommended</th>
             <th className="num">Δ</th>
+            <th className="num">Marginal ROAS</th>
+            <th className="num">7-day P50</th>
             <th>Why</th>
           </tr>
         </thead>
         <tbody>
           {rec.lines.map((ln) => (
             <tr key={ln.campaign_id}>
-              <td>{ln.campaign_name}</td>
-              <td>{ln.platform}</td>
+              <td>{ln.campaign_name}<div className="mono" style={{ fontSize: 11 }}>{ln.platform}</div></td>
               <td className="num">{money(ln.current_spend)}</td>
               <td className="num">{money(ln.recommended_spend)}</td>
               <td className={`num ${deltaClass(ln.delta_pct)}`}>{ln.delta_pct > 0 ? "+" : ""}{ln.delta_pct}%</td>
+              <td className="num">{ln.marginal_roas.toFixed(2)}×</td>
+              <td className="num" title={ln.forecast_model}>{money(ln.forecast_p50)}</td>
               <td>
                 {ln.reason_codes.map((r) => <span key={r} className="chip">{r}</span>)}
                 {ln.risk_flags.map((r) => <span key={r} className="chip risk">{r}</span>)}
@@ -117,6 +126,9 @@ export default function Page() {
           ))}
         </tbody>
       </table>
+
+      <h3 style={{ margin: "28px 0 4px" }}>Analysis</h3>
+      <Charts rec={rec} />
 
       <div className="actions">
         <button className="approve" disabled={busy || !!decision} onClick={() => decide("approve")}>Approve</button>

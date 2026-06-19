@@ -24,15 +24,20 @@ api = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
 ]
+# Stage 3 engine (forecast + response + optimizer).
+# NOTE: xgboost needs the OpenMP runtime, a SYSTEM lib (not pip): on macOS
+# `brew install libomp`; on Debian/Ubuntu `apt-get install libgomp1`.
+engine = [
+    "scikit-learn>=1.4",
+    "xgboost>=2.0",
+    "scipy>=1.13",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.5",
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
     "httpx>=0.27",          # FastAPI TestClient
-]
-# Stage 3+ modeling/optimizer deps (NOT installed yet):
-modeling = [
     "scikit-learn>=1.4",
     "xgboost>=2.0",
     "scipy>=1.13",

@@ -40,7 +40,11 @@ LATENT_DIR: Path = INTERNAL_DIR / "latent"
 # by invariant tests; the optimizer (Stage 3) will consume them later.
 BLENDED_ROAS_FLOOR: float = 4.0          # primary success metric
 NC_CPA_TARGET: float = 45.0              # new-customer CPA ceiling ($)
-PROSPECTING_MIN_SHARE: float = 0.35      # prospecting floor (share of spend)
+# Prospecting floor (share of spend). 0.33, not 0.35: the prospecting campaigns
+# cap out early (high utilization by scenario design), so their daily caps
+# physically limit prospecting to ~0.335 of budget — a 0.35 floor would be
+# infeasible. 0.33 still binds (current share ~0.315) without contradicting caps.
+PROSPECTING_MIN_SHARE: float = 0.33
 MOVEMENT_BOUND: float = 0.20             # +/- per campaign per cycle
 
 # --- Marginal-ROAS scale floor is DERIVED, not a magic number --------------

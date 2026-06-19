@@ -40,6 +40,12 @@ body {
 button.small { padding: 5px 12px; font-size: 12px; }
 .muted { color: var(--muted); }
 
+.charts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 10px; }
+.chart-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 14px 8px; }
+.chart-title { font-size: 14px; font-weight: 650; }
+.chart-sub { font-size: 12px; color: var(--muted); margin: 2px 0 8px; }
+@media (max-width: 820px) { .charts { grid-template-columns: 1fr; } }
+
 h1 { font-size: 22px; margin: 0 0 4px; }
 .sub { color: var(--muted); font-size: 13px; margin: 0 0 24px; }
 

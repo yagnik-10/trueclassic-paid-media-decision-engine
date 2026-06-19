@@ -15,16 +15,31 @@ class CampaignLine(BaseModel):
     current_spend: float
     recommended_spend: float
     delta_pct: float
+    marginal_roas: float = 0.0
+    marginal_roas_downside: float = 0.0
+    current_revenue: float = 0.0      # local response params (saturation/marginal curves)
+    response_slope: float = 0.0
+    response_quad: float = 0.0
+    forecast_p10: float = 0.0
+    forecast_p50: float = 0.0
+    forecast_p90: float = 0.0
+    forecast_model: str = ""
     reason_codes: list[str]
     risk_flags: list[str]
 
 
 class Kpis(BaseModel):
+    # calibrated (incremental) — the decision lens
     blended_roas_current: float
     blended_roas_projected: float
+    # platform-reported — shown as context (the over-attribution gap); the
+    # ENFORCED floor is the calibrated blended ROAS above (D-008)
+    reported_roas_current: float = 0.0
+    reported_roas_projected: float = 0.0
     total_current_spend: float
     total_recommended_spend: float
     reserve: float
+    nc_cpa_projected: float = 0.0
 
 
 class Recommendation(BaseModel):
@@ -35,8 +50,12 @@ class Recommendation(BaseModel):
     # Lifecycle status reflected from the backend audit store, so a refreshed
     # page shows the true state (not just optimistic local UI state).
     status: Literal["pending", "approved", "rejected"] = "pending"
-    # Stage 1 truth-in-advertising: this is a FIXED placeholder, not an optimizer result.
+    # Stage 3: a real optimizer result (False). Kept for truth-in-advertising.
     is_fixed_placeholder: bool = True
+    engine: str = "fixed"            # "fixed" (Stage 1) | "slsqp_optimizer" (Stage 3)
+    feasible: bool = True
+    conflicts: list[str] = Field(default_factory=list)
+    marginal_scale_floor: float = 0.0
     lines: list[CampaignLine]
     kpis: Kpis
 

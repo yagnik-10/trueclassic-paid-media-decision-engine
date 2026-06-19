@@ -57,15 +57,17 @@ before changing code.
   business invariants, fingerprints.
 
 ## Stage status
-Stages 0–2 are complete: Stage 0 (schemas, generator, defects, invariants),
-Stage 1 (FastAPI thin shell + Next.js page, one fixed recommendation + stubbed
-approve/reject audit), Stage 2 (real ingestion in
-`backend/decision_engine/ingestion/` — adapters, validation/quarantine, SKU
-resolution, feed-level data-quality detection, with an Ingestion UI view). Next is
-Stage 3 (real engine: baselines → XGBoost BAU → residualized adstock–Hill →
-SLSQP). Do **not** implement XGBoost, Hill fitting, SLSQP, or the LLM yet. The
-Stage 1 recommendation is still a labelled FIXED placeholder, not an optimizer
-result.
+Stages 0–3 are complete: Stage 0 (schemas, generator, defects, invariants),
+Stage 1 (FastAPI thin shell + Next.js page + stubbed approve/reject audit),
+Stage 2 (real ingestion: adapters, validation/quarantine, SKU resolution, DQ
+detection), Stage 3 (real engine in `backend/decision_engine/engine/` — XGBoost
+quantile BAU forecast + baselines, orthogonalized/double-ML residualized response,
+SciPy SLSQP optimizer with feasibility handling; the recommendation is now a real
+optimizer result, `is_fixed_placeholder=False`). Next is Stage 4 (trust & business
+controls: quantile/uncertainty charts, calibration sensitivity, durable
+approval/audit, reserve modes, Looker-ready marts). The LLM is Stage 5 — not yet.
+Engine numbers are deterministic (fixed seeds, `n_jobs=1`); xgboost needs the
+OpenMP runtime (`brew install libomp`).
 
 ## Workflow
 - `make setup && make generate && make test` must stay green.

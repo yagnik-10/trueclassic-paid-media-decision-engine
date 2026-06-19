@@ -1,9 +1,9 @@
 # True Classic Paid Media Decision Engine — exact tested dependency lock
-# Reproduces the pinned dataset fingerprint (tests/test_fingerprints.py) and
-# provides the Stage 1 API/test stack (fastapi, uvicorn, httpx).
-# Generated on Python 3.13.11. Regenerate after any intentional bump (record in docs/DECISIONS.md):
-#   pip freeze | grep -ivE '^-e |true-classic-paid-media' > requirements-lock.txt
-# Install:  python -m pip install -r requirements-lock.txt
+# Reproduces the pinned dataset fingerprint and provides the API (Stage 1) and
+# engine (Stage 3: scipy, scikit-learn, xgboost) stacks.
+# xgboost ALSO needs the OpenMP system runtime (not pip): macOS 'brew install libomp'.
+# Generated on Python 3.13.11. Regenerate after a bump (record in docs/DECISIONS.md):
+#   pip freeze | grep -ivE '^-e |true-classic-paid-media|decision.engine' > requirements-lock.txt
 annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.14.0
@@ -17,7 +17,9 @@ httptools==0.8.0
 httpx==0.28.1
 idna==3.18
 iniconfig==2.3.0
+joblib==1.5.3
 mypy_extensions==1.1.0
+narwhals==2.22.1
 numpy==2.4.6
 packaging==26.2
 pandas==3.0.3
@@ -32,8 +34,11 @@ python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
 PyYAML==6.0.3
 ruff==0.15.18
+scikit-learn==1.9.0
+scipy==1.17.1
 six==1.17.0
 starlette==1.3.1
+threadpoolctl==3.6.0
 typeguard==4.5.2
 typing-inspect==0.9.0
 typing-inspection==0.4.2
@@ -42,3 +47,4 @@ uvicorn==0.49.0
 uvloop==0.22.1
 watchfiles==1.2.0
 websockets==16.0
+xgboost==3.3.0

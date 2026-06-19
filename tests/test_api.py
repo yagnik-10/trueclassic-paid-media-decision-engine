@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from backend.api import main
 from backend.api.store import DecisionStore
 
-REC_ID = "REC-FIXED-0001"
+REC_ID = "REC-OPT-0001"
 
 
 @pytest.fixture
@@ -29,17 +29,19 @@ def test_recommendation_shape_and_directions(client):
     rec = client.get("/api/recommendation").json()
     assert rec["rec_id"] == REC_ID
     assert rec["status"] == "pending"            # fresh store
-    assert rec["is_fixed_placeholder"] is True
+    assert rec["is_fixed_placeholder"] is False  # Stage 3: a real optimizer result
+    assert rec["engine"] == "slsqp_optimizer" and rec["feasible"] is True
     lines = {ln["campaign_id"]: ln for ln in rec["lines"]}
     assert len(lines) == 7
-    # directional fixture mirrors the golden scenario
+    # the optimizer recovers the golden scenario from observable data
     assert lines["META_RETARGETING"]["recommended_spend"] < lines["META_RETARGETING"]["current_spend"]
     assert lines["GOOGLE_NONBRAND"]["recommended_spend"] > lines["GOOGLE_NONBRAND"]["current_spend"]
-    # inventory-constrained campaign is flagged and held flat
+    # inventory-constrained campaign is flagged and not scaled up
     pmax = lines["GOOGLE_PMAX"]
     assert "inventory_no_scale" in pmax["risk_flags"]
-    assert pmax["recommended_spend"] == pmax["current_spend"]
-    assert rec["kpis"]["blended_roas_current"] > 0
+    assert pmax["recommended_spend"] <= pmax["current_spend"]
+    # the enforced headline (reported) ROAS clears the floor
+    assert rec["kpis"]["reported_roas_projected"] >= 4.0
 
 
 def test_approve_generates_stub_execution(client):
@@ -103,6 +105,20 @@ def test_unknown_recommendation_404(client):
     r = client.post("/api/recommendation/REC-NOPE/decision",
                     json={"action": "approve", "approver": "m"})
     assert r.status_code == 404
+
+
+def test_infeasible_recommendation_cannot_be_approved(client, monkeypatch):
+    # an infeasible plan must never be approved/executed (but can still be rejected)
+    base = main.build_recommendation()
+    base.feasible = False
+    base.conflicts = ["calibrated blended ROAS 3.9 < floor 4.0"]
+    monkeypatch.setattr(main, "build_recommendation", lambda *a, **k: base)
+    approve = client.post(f"/api/recommendation/{REC_ID}/decision",
+                          json={"action": "approve", "approver": "m"})
+    assert approve.status_code == 422
+    reject = client.post(f"/api/recommendation/{REC_ID}/decision",
+                         json={"action": "reject", "approver": "m"})
+    assert reject.status_code == 200  # rejecting an infeasible plan is allowed
 
 
 # --- Stage 2 ingestion endpoints --------------------------------------------

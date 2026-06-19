@@ -41,7 +41,7 @@ production calibration still requires lift experiments.
 
 ## Build status — staged vertical slice
 
-The system is built as a vertical slice that stays runnable. **Stages 0–2 are
+The system is built as a vertical slice that stays runnable. **Stages 0–3 are
 complete.**
 
 - **Stage 0 ✅ — Golden scenario + synthetic-truth contract**:
@@ -58,7 +58,17 @@ complete.**
   **data-quality defects detected from the feeds** (dedup, missing dates, micros
   normalization, null new-customer, reconciliation, coverage gaps, label maturity).
   Surfaced in an **Ingestion & reconciliation** UI view.
-- Stage 3 — Real engine (baselines → XGBoost BAU → cross-fitted residualized adstock–Hill → SLSQP).
+- **Stage 3 ✅ — Real engine**: the fixed recommendation is replaced by a
+  deterministic engine that **recovers the scenario from observable data** —
+  XGBoost **quantile** BAU forecast (P10/P50/P90, monotonic, gap-aware walk-forward,
+  promoted only if it beats simple baselines) + an **orthogonalized (double-ML)**
+  residualized spend-response that recovers the marginal-ROAS ordering + a **SciPy
+  SLSQP** optimizer maximizing calibrated net contribution under the **calibrated**
+  ROAS floor (per-campaign marginal hurdles, prospecting/NC-CPA/movement/inventory
+  constraints), with an explicit infeasibility conflict report. The marginal
+  magnitudes are recovered via adstocked double-ML so the optimizer can lift
+  calibrated blended ROAS across 4.0. Marginal ROAS, reported-vs-calibrated ROAS, and the
+  7-day forecast are shown in the UI.
 - Stage 4 — Trust & business controls (quantiles, calibration sensitivity, approval/audit, inventory, reserve modes, Looker-ready marts).
 - Stage 5 — Bounded LLM (SKU ranking + grounded narration).
 - Stage 6 — Harden (seeded demo, pretrained artifacts, deployed backup).
@@ -85,16 +95,20 @@ make web-setup    # one-time: install frontend (Next.js) deps
 make web          # Next.js frontend → http://localhost:3000
 ```
 
-Open http://localhost:3000: review the fixed budget-reallocation recommendation
-(current vs recommended per campaign, reason/risk codes, blended-ROAS KPIs) and
-**Approve** or **Reject**. Approve emits **stubbed** Meta/Google execution
-payloads (no live writes); the inventory-constrained campaign is flagged and not
-executed. The backend is single-service (FastAPI) by design — Next.js already
+Open http://localhost:3000: review the **optimizer** budget-reallocation
+recommendation (current vs recommended per campaign, marginal ROAS, reason/risk
+codes, calibrated-vs-reported ROAS, 7-day forecast, and the analysis charts) and
+**Approve** or **Reject** — an **infeasible** plan cannot be approved. Approve
+emits **stubbed** Meta/Google execution payloads (no live writes); the
+inventory-constrained campaign is flagged and not scaled. The backend is
+single-service (FastAPI) by design — Next.js already
 covers the Node/TS side.
 
 `make setup` installs the **exact tested versions** from `requirements-lock.txt`
-(now including the FastAPI/uvicorn/httpx API stack; use `make setup-dev` for the
-looser pyproject ranges during development).
+(now including the FastAPI/uvicorn/httpx API stack and the scipy/scikit-learn/
+xgboost engine stack; use `make setup-dev` for the looser pyproject ranges).
+**XGBoost needs the OpenMP system runtime** (not pip-installable): on macOS run
+`brew install libomp`; on Debian/Ubuntu `apt-get install libgomp1`.
 `make generate` prints row counts, planted-defect counts, and writes
 `manifest.json` (seed, versions, row counts, logical fingerprints). The **main
 reproducibility hash is the full-artifact fingerprint** — it covers every
