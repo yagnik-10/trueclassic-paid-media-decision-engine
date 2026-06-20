@@ -30,7 +30,6 @@ from backend.decision_engine.schemas.envelopes import (
     ShopifyDailyRecord,
 )
 
-_CANONICAL_WINDOW = {"meta": "7d_click_1d_view", "google": "data_driven"}
 # Defaults for canonical fields not carried by a raw platform record at ingest:
 _DEFAULT_LABEL_MATURE = True      # the label-maturity stage sets this later
 _DEFAULT_IS_DUPLICATE = False     # deduplication is a later pipeline step
@@ -98,7 +97,9 @@ def normalize_google_record(rec: GoogleAdsRow, ref: CampaignRef) -> dict | None:
         "platform_reported_revenue": float(rec.metrics.conversions_value),
         "platform_reported_conversions": float(rec.metrics.conversions),
         "new_customers": rec.metrics.new_customers,
-        "attribution_window": _CANONICAL_WINDOW["google"],
+        # preserve the OBSERVED attribution model from the feed (do NOT replace it
+        # with the canonical policy — the DQ layer compares the two and flags the gap)
+        "attribution_window": rec.campaign.attribution_model,
         "label_mature": _DEFAULT_LABEL_MATURE,
         # Google rows carry no pull timestamp; ingest_google backfills the
         # extraction date as the feed's latest metric date (the pull happened

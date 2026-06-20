@@ -19,6 +19,16 @@ data/raw/*
 # Internal latent generator truth — NEVER committed (debug/test opt-in only)
 data/internal/
 
+# Realistic profile (D-034): regenerate with `make generate-realistic`. Its
+# fingerprint is pinned in tests; the bytes are reproducible so not committed.
+data/realistic/
+
+# Durable append-only audit store (Stage 4.4) — runtime decision log (sqlite)
+data/audit/
+
+# Model-performance report (reproducible via `make model-report`) — tracked so the
+# plots/metrics are visible in the editor and reviewable in git.
+
 # Node / frontend (Stage 1)
 node_modules/
 .next/

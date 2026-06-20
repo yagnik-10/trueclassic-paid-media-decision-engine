@@ -78,6 +78,9 @@ def build_google_envelope(fact: pd.DataFrame) -> dict:
                     "id": r["campaign_id"],
                     "name": c.campaign_name,
                     "advertising_channel_type": _CHANNEL_TYPE.get(c.objective, "SEARCH"),
+                    # observed attribution model (the planted GOOGLE_BRAND mismatch
+                    # rides through here, not silently normalized at the boundary)
+                    "attribution_model": r["attribution_window"],
                 },
                 "metrics": {
                     "cost_micros": int(round(r["spend"] * MICROS_PER_UNIT)),

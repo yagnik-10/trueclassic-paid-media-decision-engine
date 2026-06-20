@@ -1,0 +1,34 @@
+{
+  "canonical_tables_fingerprint": "7ebbdf0b9e835a47d28318155c611275eadad3dc3b5ea8450f67f98498950b2b",
+  "chain": {
+    "count": 1,
+    "head_hash": "2eeff783d8552b7078ee3e63754c0b7efaf986c382dbf22f8d989141de6528d5",
+    "ok": true
+  },
+  "config_fingerprint": "62336454841dec3e",
+  "dataset_profile": "realistic",
+  "engine_version": "stage3.5",
+  "generated_at": "2026-06-20T15:15:57.544039+00:00",
+  "head_scenario_id": "SCN-e34a94f8174ffc70",
+  "marts": [
+    "mart_decision",
+    "mart_decision_line",
+    "mart_binding_constraint",
+    "mart_audit_chain"
+  ],
+  "n_decisions": 1,
+  "panel_fingerprint": "9b5120157a274c2fae3f5ea7b82b292bf00a3c2504109cc9c66e5e83d25c3d39",
+  "report_version": "stage4.5",
+  "run_id": "RUN-STAGE3-SLSQP",
+  "seeded_this_run": {
+    "config_fingerprint": "62336454841dec3e",
+    "data_fingerprint": "9b5120157a274c2fae3f5ea7b82b292bf00a3c2504109cc9c66e5e83d25c3d39",
+    "decided_at": "2026-06-20T15:15:57.492812+00:00",
+    "engine_version": "stage3.5",
+    "feasible": true,
+    "policy_mode": "expected",
+    "rec_id": "REC-OPT-0001",
+    "run_id": "RUN-STAGE3-SLSQP",
+    "scenario_id": "SCN-e34a94f8174ffc70"
+  }
+}

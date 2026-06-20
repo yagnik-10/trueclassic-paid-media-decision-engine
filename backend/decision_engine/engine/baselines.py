@@ -9,7 +9,9 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-FORWARD_DAYS = 7
+from backend.decision_engine.config import FORECAST_HORIZON_DAYS
+
+FORWARD_DAYS = FORECAST_HORIZON_DAYS
 
 
 def _walk_forward_mae(g: pd.DataFrame, predict) -> float:

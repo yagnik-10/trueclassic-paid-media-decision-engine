@@ -182,3 +182,17 @@ def test_detected_defects_present(report):
 def test_dq_issue_ids_unique(report):
     ids = [i["issue_id"] for i in report.dq_issues]
     assert len(ids) == len(set(ids))
+
+
+def test_attribution_window_conflict_detected_from_feed(report):
+    # the conflict is detected by comparing the OBSERVED model (carried through the
+    # feed) against the canonical policy — not asserted from generator truth
+    attr = [i for i in report.dq_issues if i["issue_type"] == "attribution_window_mismatch"]
+    assert len(attr) == 1
+    issue = attr[0]
+    assert issue["entity_ref"] == "GOOGLE_BRAND"
+    assert "last_click" in issue["description"]       # observed
+    assert "data_driven" in issue["description"]      # expected policy
+    # the adapter must NOT have silently normalized the observed value away
+    gb = report.fact[report.fact["campaign_id"] == "GOOGLE_BRAND"]["attribution_window"]
+    assert set(gb.dropna().unique()) == {"last_click"}

@@ -7,6 +7,7 @@ tests in lockstep (see tests/test_fingerprints.py).
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 # --- Determinism -----------------------------------------------------------
@@ -28,23 +29,83 @@ MICROS_PER_UNIT: int = 1_000_000
 # --- Paths -----------------------------------------------------------------
 REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 DATA_DIR: Path = REPO_ROOT / "data"
-RAW_DIR: Path = DATA_DIR / "raw"
-CANONICAL_DIR: Path = DATA_DIR / "canonical"
+
+# --- Dataset profiles ------------------------------------------------------
+# Two DETERMINISTIC profiles share the SAME latent truth (scenario.py) but differ
+# in the OBSERVABLE driving process:
+#   realistic -- PRIMARY data (D-035): structured volatility + exogenous spend
+#                variation; what the engine/API/report use by default. Lives under
+#                data/realistic/. Separately fingerprinted (pinned in tests).
+#   golden    -- the tight known-truth REGRESSION BENCHMARK (fingerprint pinned);
+#                lives at the legacy data/{raw,canonical,internal} paths. The test
+#                suite pins itself to golden (tests/conftest.py) regardless of the
+#                runtime default, so golden stays the deterministic anchor.
+# The active profile is selected via the TC_DATASET_PROFILE env var (default realistic).
+PROFILES: tuple[str, ...] = ("golden", "realistic")
+DATASET_PROFILE: str = os.environ.get("TC_DATASET_PROFILE", "realistic")
+
+_PROFILE_ROOTS: dict[str, Path] = {
+    "golden": DATA_DIR,                 # legacy paths -> golden bytes are untouched
+    "realistic": DATA_DIR / "realistic",
+}
+
+
+def profile_root(profile: str | None = None) -> Path:
+    """Data root for a dataset profile (defaults to the active TC_DATASET_PROFILE)."""
+    p = profile or DATASET_PROFILE
+    if p not in _PROFILE_ROOTS:
+        raise ValueError(f"unknown dataset profile {p!r}; expected one of {PROFILES}")
+    return _PROFILE_ROOTS[p]
+
+
+def profile_paths(profile: str | None = None) -> dict[str, Path]:
+    """Resolve the raw/canonical/internal/latent dirs for a profile (call-time, so
+    generation never depends on the import-time active profile)."""
+    root = profile_root(profile)
+    internal = root / "internal"
+    return {"raw": root / "raw", "canonical": root / "canonical",
+            "internal": internal, "latent": internal / "latent"}
+
+
+# Module-level constants resolve to the ACTIVE profile (golden by default), so the
+# engine/API/ingestion follow TC_DATASET_PROFILE without per-call wiring.
+_ACTIVE = profile_paths()
+RAW_DIR: Path = _ACTIVE["raw"]
+CANONICAL_DIR: Path = _ACTIVE["canonical"]
 # Internal, NON-model-input artifacts (latent generator truth). Never loaded by
 # adapters, DuckDB, feature discovery, or any model-input path.
-INTERNAL_DIR: Path = DATA_DIR / "internal"
-LATENT_DIR: Path = INTERNAL_DIR / "latent"
+INTERNAL_DIR: Path = _ACTIVE["internal"]
+LATENT_DIR: Path = _ACTIVE["latent"]
 
 # --- Business policy constants (the truth, not fitted) ---------------------
 # These define the golden scenario's decision thresholds. They are referenced
 # by invariant tests; the optimizer (Stage 3) will consume them later.
 BLENDED_ROAS_FLOOR: float = 4.0          # primary success metric
 NC_CPA_TARGET: float = 45.0              # new-customer CPA ceiling ($)
-# Prospecting floor (share of spend). 0.33, not 0.35: the prospecting campaigns
-# cap out early (high utilization by scenario design), so their daily caps
-# physically limit prospecting to ~0.335 of budget — a 0.35 floor would be
-# infeasible. 0.33 still binds (current share ~0.315) without contradicting caps.
-PROSPECTING_MIN_SHARE: float = 0.33
+# Prospecting floor (share of spend) — a brand-investment policy minimum, and it
+# is PROFILE-AWARE because the binding physics differ by profile (D-037). The
+# prospecting campaigns cap out early (high utilization by design), so their
+# daily caps impose a cap-implied CEILING on prospecting share in growth
+# (full-budget) mode; the policy floor must sit at/below that ceiling to be
+# feasible.
+#   golden:    ceiling ~0.335 → 0.33 floor still BINDS (the active constraint),
+#              demonstrating the guardrail shapes the plan. (Not 0.35: that
+#              would exceed the ceiling and be infeasible.)
+#   realistic: caps + the below-hurdle gate on META_ADV_SHOPPING pin prospecting
+#              at ~0.319 of the (volatility-/trend-inflated) budget, so a 0.33
+#              floor is physically infeasible in growth mode. The floor is set to
+#              0.30 — a defensible brand minimum BELOW the ~0.319 ceiling — so the
+#              plan is feasible with margin and the prospecting DAILY CAPS (not
+#              the policy floor) are the honestly-reported active constraint.
+_PROSPECTING_MIN_SHARE_BY_PROFILE: dict[str, float] = {"golden": 0.33, "realistic": 0.30}
+
+
+def prospecting_min_share(profile: str | None = None) -> float:
+    """Profile-aware prospecting-share floor (defaults to the active profile)."""
+    return _PROSPECTING_MIN_SHARE_BY_PROFILE[profile or DATASET_PROFILE]
+
+
+PROSPECTING_MIN_SHARE: float = prospecting_min_share(DATASET_PROFILE)
 MOVEMENT_BOUND: float = 0.20             # +/- per campaign per cycle
 
 # --- Marginal-ROAS scale floor is DERIVED, not a magic number --------------
@@ -68,3 +129,10 @@ INVENTORY_SAFETY_DAYS: int = 7
 
 # Label maturity: a 7-day conversion outcome needs 7 days to mature.
 LABEL_MATURITY_DAYS: int = 7
+
+# Forecast horizon: the BAU model predicts a forward window of this many days
+# (target_fwd7 = Σ calibrated revenue over t..t+H-1). Numerically equal to the
+# maturity gap but a DISTINCT concept; the single source of truth for the "÷ H"
+# that converts the 7-day BAU forecast to an average DAILY level for the
+# (daily-budget) optimizer anchor. Changing it is a scenario change.
+FORECAST_HORIZON_DAYS: int = 7

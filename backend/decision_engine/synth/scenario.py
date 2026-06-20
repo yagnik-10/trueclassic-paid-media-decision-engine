@@ -22,7 +22,7 @@ saturated (low marginal); when base spend <= gamma there is room to scale.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 import numpy as np
@@ -41,24 +41,43 @@ Segment = Literal[
 class Product:
     sku_id: str
     product_name: str
-    unit_price: float          # DTC selling price
-    unit_cost: float           # COGS
-    fulfillment_cost: float    # pick/pack/ship
-    return_rate: float         # fraction returned
+    unit_price: float          # DTC selling price (P)
+    unit_cost: float           # COGS (C)
+    fulfillment_cost: float    # OUTBOUND pick/pack/ship (F) — paid on EVERY shipped order
+    return_rate: float         # fraction returned (r)
+    # Explicit variable-cost stack (D-040). Defaults are portfolio-wide synthetic
+    # assumptions (NOT verified True Classic ledger values); only return_rate is set
+    # per-SKU. See docs/DECISIONS.md D-040 for sourcing and the sensitivity grid.
+    payment_fee_rate: float = 0.03      # processor fee on gross sale, retained on refund (f)
+    return_handling_cost: float = 8.0   # return shipping + processing, per returned order ($ H)
+    cogs_recovery_rate: float = 0.80    # fraction of original COGS value restored on restock (ρ)
 
     @property
     def contribution_margin_rate(self) -> float:
-        """Pre-ad contribution margin rate used by the optimizer objective."""
-        gross = self.unit_price - self.unit_cost - self.fulfillment_cost
-        net = gross * (1.0 - self.return_rate)
-        return round(net / self.unit_price, 4)
+        """Expected pre-ad contribution margin rate used by the optimizer objective.
+
+            CM = [ P(1-r) - C(1 - r·ρ) - F - f·P - r·H ] / P
+
+        Outbound fulfillment F is charged on every shipped order (incl. ones later
+        returned); COGS is recovered at ρ on the returned fraction; payment fees f·P
+        are charged on the gross sale and retained on refund; each return incurs H.
+        This CORRECTS the pre-D-040 model, which multiplied F by (1-r) (free outbound
+        on returns) and implicitly assumed ρ=1 — both optimistic. With f=0, H=0, ρ=1
+        it is still stricter than the old formula by exactly r·F/P (the outbound fix)."""
+        P, C, F = self.unit_price, self.unit_cost, self.fulfillment_cost
+        r, f, H, rho = (self.return_rate, self.payment_fee_rate,
+                        self.return_handling_cost, self.cogs_recovery_rate)
+        contribution = P * (1.0 - r) - C * (1.0 - r * rho) - F - f * P - r * H
+        return round(contribution / P, 4)
 
 
+# Base return rates are SKU-specific (men's basics; bottoms return more) and were
+# DECLARED before observing the resulting allocation (D-040): revenue-weighted ≈13.5%.
 PRODUCTS: tuple[Product, ...] = (
-    Product("TC-CREW-BLK", "Black Crew Neck Tee", 30.0, 8.5, 4.0, 0.06),
-    Product("TC-POLO-CLS", "Classic Polo", 45.0, 12.0, 4.5, 0.07),
-    Product("TC-JOG-BLK", "Black Active Joggers", 65.0, 19.0, 5.5, 0.09),
-    Product("TC-CREW-6PK", "Staple Crew 6-Pack", 99.0, 28.0, 7.0, 0.05),
+    Product("TC-CREW-BLK", "Black Crew Neck Tee", 30.0, 8.5, 4.0, 0.12),
+    Product("TC-POLO-CLS", "Classic Polo", 45.0, 12.0, 4.5, 0.14),
+    Product("TC-JOG-BLK", "Black Active Joggers", 65.0, 19.0, 5.5, 0.18),
+    Product("TC-CREW-6PK", "Staple Crew 6-Pack", 99.0, 28.0, 7.0, 0.12),
 )
 
 # The inventory-constrained SKU (FINAL_PLAN section 12): joggers promoted in
@@ -95,7 +114,7 @@ class Campaign:
     organic_base: float = 0.0
 
 
-CAMPAIGNS: tuple[Campaign, ...] = (
+_UNIT_CAMPAIGNS: tuple[Campaign, ...] = (
     # Meta prospecting: must stay funded; caps out early (cap ~= base spend),
     # NC-CPA / prospecting-floor binding. Moderate marginal, noisy.
     Campaign(
@@ -194,6 +213,31 @@ CAMPAIGNS: tuple[Campaign, ...] = (
         incrementality=0.80, noise_cv=0.12,
         primary_sku="TC-CREW-6PK", organic_base=500.0,
     ),
+)
+
+# --- Portfolio scale migration (D-039) -------------------------------------
+# True Classic operates a company-wide paid-media portfolio (~$50–60M/yr per
+# public reporting ≈ $137–164K/day), not the ~$24K/day of the original unit
+# scenario. We apply a single HOMOGENEOUS scale factor k to the dollar-denominated
+# response inputs only. Because the Hill response R(s)=β·sᵃ/(γᵃ+sᵃ) satisfies
+# R'(ks)=k·R(s) when s, γ AND β scale by k, this is *economically invariant*:
+# average ROAS, marginal ROAS, utilization, NC-CPA, days-of-cover, prospecting
+# share, incrementality and every contribution-margin RATE are unchanged — only
+# the absolute dollar/volume LEVELS scale by k. Ratio/policy knobs in config.py
+# (NC_CPA_TARGET, PROSPECTING_MIN_SHARE, HARD_FLOOR_SAFETY, MOVEMENT_BOUND, the
+# blended-ROAS floor) are deliberately NOT scaled. Set PORTFOLIO_SCALE = 1.0 to
+# recover the original golden-v1 ($24K-scale) fixture.
+PORTFOLIO_SCALE: float = 6.0
+_SCALED_FIELDS: tuple[str, ...] = ("beta", "gamma", "base_spend", "daily_cap", "organic_base")
+
+
+def _scale_campaign(c: Campaign, k: float) -> Campaign:
+    """Apply the homogeneous portfolio scale to the dollar-denominated fields."""
+    return replace(c, **{f: getattr(c, f) * k for f in _SCALED_FIELDS})
+
+
+CAMPAIGNS: tuple[Campaign, ...] = tuple(
+    _scale_campaign(c, PORTFOLIO_SCALE) for c in _UNIT_CAMPAIGNS
 )
 
 CAMPAIGN_BY_ID: dict[str, Campaign] = {c.campaign_id: c for c in CAMPAIGNS}

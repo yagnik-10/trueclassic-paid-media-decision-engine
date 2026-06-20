@@ -27,18 +27,24 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Generate True Classic Paid Media Decision Engine synthetic dataset")
     ap.add_argument("--seed", type=int, default=C.MASTER_SEED)
     ap.add_argument(
+        "--profile", choices=C.PROFILES, default="golden",
+        help="dataset profile: 'golden' (smooth known-truth benchmark) or "
+        "'realistic' (structured volatility + exogenous spend variation).",
+    )
+    ap.add_argument(
         "--write-latent-truth",
         action="store_true",
-        help="ALSO persist latent generator truth under data/internal/latent "
+        help="ALSO persist latent generator truth under <profile>/internal/latent "
         "(debug/test only; never part of the normal model-input path).",
     )
     args = ap.parse_args()
 
-    ds = generate(seed=args.seed)
-    write_all(ds, write_latent=args.write_latent_truth)
+    ds = generate(seed=args.seed, profile=args.profile)
+    write_all(ds, write_latent=args.write_latent_truth, profile=args.profile)
 
-    print(f"Generated with seed={args.seed}")
-    print(f"  output: {C.CANONICAL_DIR}  and  {C.RAW_DIR}")
+    paths = C.profile_paths(args.profile)
+    print(f"Generated profile={args.profile} with seed={args.seed}")
+    print(f"  output: {paths['canonical']}  and  {paths['raw']}")
     print("\nRow counts:")
     for name, df in ds.tables.items():
         print(f"  {name:28} {len(df):6} rows")

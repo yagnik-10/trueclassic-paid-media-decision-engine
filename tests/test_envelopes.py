@@ -56,6 +56,17 @@ def test_missing_google_extraction_date_present_in_raw(envelopes):
     assert len(missing) == 3  # the planted missing-extraction-date rows
 
 
+def test_google_carries_observed_attribution_model(envelopes):
+    # the feed carries the OBSERVED attribution model per campaign (not normalized),
+    # so the boundary preserves the planted GOOGLE_BRAND mismatch
+    results = envelopes["google"]["results"]
+    assert all("attribution_model" in r["campaign"] for r in results)
+    models = {r["campaign"]["id"]: r["campaign"]["attribution_model"] for r in results}
+    assert models["GOOGLE_BRAND"] == "last_click"          # the planted conflict
+    others = {m for cid, m in models.items() if cid != "GOOGLE_BRAND"}
+    assert others == {"data_driven"}                       # everyone else on policy
+
+
 def test_duplicate_meta_record_present_in_raw(envelopes, tables):
     fact = tables["fact_ad_performance"]
     n_meta_rows = (fact["platform"] == "meta").sum()

@@ -2,10 +2,10 @@
 Stage 0 planted defects). Produces `data_quality_issue`-shaped rows, marks
 duplicates on the natural key, and applies the label-maturity policy.
 
-Only feed-observable signals are detected here. A few Stage 0 canonical-level
-defects (e.g. the Google attribution-window mismatch, the Meta new-customer
-nulls) are NOT carried by the raw API envelopes and so are out of scope for
-feed-level detection — see docs/DECISIONS.md.
+Only feed-observable signals are detected here. The attribution-window conflict
+is detected by comparing each campaign's OBSERVED attribution model (carried
+through the raw feed → adapter, never silently normalized) against the canonical
+comparison policy below; the gap is surfaced, not reconciled.
 """
 
 from __future__ import annotations
@@ -17,6 +17,11 @@ from backend.decision_engine.ingestion.validation import QuarantinedRecord
 from backend.decision_engine.synth.defects import DEFECT_BY_TYPE
 
 _NATURAL_KEY = ["platform", "campaign_id", "date"]  # platform-scoped: vendor IDs aren't global
+
+# The canonical cross-platform comparison policy: the attribution model each
+# platform's metrics must be on before platform ROAS is treated as directly
+# comparable. This is the EXPECTED value; the OBSERVED value comes from the feed.
+CANONICAL_ATTRIBUTION_POLICY = {"meta": "7d_click_1d_view", "google": "data_driven"}
 
 
 def _issue(issue_type: str, seq: int, entity_type: str, entity_ref: str,
@@ -115,6 +120,25 @@ def detect(
         if gap > 0:
             issues.append(_issue("inconsistent_date_coverage", seq, "fact_ad_performance",
                                  str(cid), f"{gap}-day coverage gap in active range"))
+            seq += 1
+
+    # 8. attribution-window conflict: OBSERVED model (from feed) vs the canonical
+    #    comparison policy. We compare, surface, and retain the platform value —
+    #    we do NOT reconcile/overwrite the revenue (cross-platform ROAS is simply
+    #    not directly comparable until the metrics are calibrated to one policy).
+    seq = 1
+    grp = (fact[~fact["is_duplicate"]][["platform", "campaign_id", "attribution_window"]]
+           .dropna(subset=["attribution_window"]).drop_duplicates()
+           .sort_values(["platform", "campaign_id", "attribution_window"]))
+    for _, r in grp.iterrows():
+        expected = CANONICAL_ATTRIBUTION_POLICY.get(str(r["platform"]))
+        observed = str(r["attribution_window"])
+        if expected is not None and observed != expected:
+            issues.append(_issue(
+                "attribution_window_mismatch", seq, "dim_campaign", str(r["campaign_id"]),
+                f"{r['campaign_id']} reports '{observed}'; canonical comparison policy "
+                f"expects '{expected}' — platform ROAS retained but not directly "
+                f"comparable until calibrated"))
             seq += 1
 
     return fact, commerce, issues

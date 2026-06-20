@@ -10,15 +10,19 @@ API_PORT ?= 8000
 PYTHONPATH := .
 export PYTHONPATH
 
-.PHONY: help setup setup-dev generate test lint lint-report clean fingerprint \
-        verify-clean-install api web web-setup
+.PHONY: help setup setup-dev generate generate-golden generate-realistic test lint lint-report clean fingerprint \
+        verify-clean-install api web web-setup model-report econ-report cm-sweep marts
 
 help:
 	@echo "make setup      - create venv and install EXACT locked deps (reproducible)"
 	@echo "make setup-dev  - create venv and install from pyproject ranges (dev)"
-	@echo "make generate   - generate the deterministic synthetic dataset"
+	@echo "make generate   - generate BOTH datasets: realistic (primary) + golden (benchmark)"
+	@echo "make generate-realistic - generate only the realistic primary profile (data/realistic/)"
+	@echo "make generate-golden    - generate only the golden benchmark (data/{raw,canonical})"
 	@echo "make test       - run the test suite (engine + API)"
 	@echo "make fingerprint- print + verify the full-artifact fingerprint"
+	@echo "make model-report - reproducible forecast/response/optimizer performance report"
+	@echo "make marts      - build Looker-ready SQL marts from the audit ledger (DDL + CSV)"
 	@echo "make lint       - ruff check (ENFORCING: fails on violations)"
 	@echo "make lint-report- ruff check (non-enforcing report)"
 	@echo "make verify-clean-install - build a throwaway venv from the lock and run tests"
@@ -45,18 +49,48 @@ verify-clean-install:
 	.venv-verify/bin/pip install --upgrade pip
 	.venv-verify/bin/pip install -r requirements-lock.txt
 	.venv-verify/bin/pip install -e . --no-deps
-	.venv-verify/bin/python scripts/generate_synthetic_data.py
+	.venv-verify/bin/python scripts/generate_synthetic_data.py --profile golden
+	.venv-verify/bin/python scripts/generate_synthetic_data.py --profile realistic
 	.venv-verify/bin/pytest tests/
 	rm -rf .venv-verify
 
-generate:
-	$(PY) scripts/generate_synthetic_data.py
+# Primary onboarding: write BOTH profiles to disk -- realistic (the default the
+# engine/API/report use) AND golden (the regression benchmark the test suite pins
+# to). The two live in separate folders so neither overwrites the other.
+generate: generate-golden generate-realistic
+
+# realistic: PRIMARY data (D-035) -> data/realistic/.
+generate-realistic:
+	$(PY) scripts/generate_synthetic_data.py --profile realistic
+
+# golden: known-truth benchmark (pinned fingerprint) -> data/{raw,canonical}.
+generate-golden:
+	$(PY) scripts/generate_synthetic_data.py --profile golden
 
 test:
 	$(BIN)/pytest tests/
 
 fingerprint:
 	$(PY) scripts/verify_fingerprint.py
+
+# Reproducible model-performance report (forecast + response + optimizer).
+# Regenerates from deterministic data without editing sources; run twice for
+# identical numeric outputs (metrics.json).
+model-report:
+	$(PY) scripts/model_report.py
+
+# Contribution-economics report (D-040): per-SKU waterfall, hurdles, sensitivity grid.
+econ-report:
+	$(PY) scripts/economics_report.py
+
+# Phase-4 CM-ROAS floor policy sweep (D-041, READ-ONLY): grid x modes + model-error
+# robustness. Changes no live default/config/fingerprint; decision support only.
+cm-sweep:
+	$(PY) scripts/cm_floor_sweep.py
+
+# Looker-ready SQL marts (views) over the durable audit ledger -> DDL + CSV extracts.
+marts:
+	$(PY) scripts/build_marts.py
 
 # --- Stage 1 thin shell: FastAPI backend + Next.js frontend ----------------
 api:
@@ -77,5 +111,5 @@ lint-report:
 	$(BIN)/ruff check backend tests scripts --exit-zero
 
 clean:
-	rm -rf data/canonical/* data/raw/* .pytest_cache
+	rm -rf data/canonical/* data/raw/* data/realistic .pytest_cache
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

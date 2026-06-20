@@ -1,0 +1,5 @@
+seq,scenario_id,decided_at,decision_status,constraint_name,constraint_status,detail
+1,SCN-e34a94f8174ffc70,2026-06-20T15:15:57.492986+00:00,approved,budget_fully_deployed,binding,"deployed $138,405 of $138,405 · reserve $0"
+1,SCN-e34a94f8174ffc70,2026-06-20T15:15:57.492986+00:00,approved,blended_roas_floor,slack,4.193× vs floor 4.00× (margin +0.193×)
+1,SCN-e34a94f8174ffc70,2026-06-20T15:15:57.492986+00:00,approved,prospecting_min_share,binding,30.04% vs min 30.00% (margin +0.04pp)
+1,SCN-e34a94f8174ffc70,2026-06-20T15:15:57.492986+00:00,approved,nc_cpa_target,slack,$5.51 vs target $45.00 (margin $+39.49)

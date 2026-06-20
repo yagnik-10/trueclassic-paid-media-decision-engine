@@ -15,6 +15,11 @@ The canonical architecture and build plan live in
 [docs/FINAL_PLAN.md](docs/FINAL_PLAN.md). It is the source of truth; proposed
 deviations are recorded in [docs/DECISIONS.md](docs/DECISIONS.md).
 
+> **Platform scope.** The runnable vertical slice covers **Meta and Google** (the
+> minimum needed to prove cross-platform reallocation). Amazon is **not**
+> implemented; it follows the same connector + canonical-schema pattern and is the
+> next platform extension — no new decision logic, only another ingestion adapter.
+
 ---
 
 ## What is real vs. stubbed
@@ -25,7 +30,7 @@ deviations are recorded in [docs/DECISIONS.md](docs/DECISIONS.md).
 | Deterministic API-envelope-shaped data generator | Incrementality coefficients are **synthetic**, not measured |
 | Planted data-quality defects + explicit quarantine **states** in the artifacts | Execution payloads are **stubbed** (no real OAuth, no live writes) |
 | Golden-scenario business invariants & tolerances | — |
-| Stage 1 approve/reject decision flow (idempotent; rejected can't execute) | Execution payloads are **stubbed**; the audit is **in-memory** (a durable, append-only audit store is Stage 4) |
+| Approve/reject decision flow (idempotent; rejected can't execute) over a **durable, append-only, hash-chained** audit ledger (SQLite) | Execution payloads are **stubbed**; the ledger persists decisions but does not call platform APIs |
 | (later stages) ingestion adapters & quarantine **service**, XGBoost BAU forecast, adstock–Hill response, SLSQP optimizer, **durable** approval/audit, bounded LLM | — |
 
 Stage 0 represents quarantine **states** (e.g. `data_quality_issue` rows and
@@ -56,20 +61,57 @@ complete.**
   two-level (envelope + record) validation & **quarantine**, deterministic **SKU
   reconciliation** (auto / needs-approval / quarantine with a human approval), and
   **data-quality defects detected from the feeds** (dedup, missing dates, micros
-  normalization, null new-customer, reconciliation, coverage gaps, label maturity).
-  Surfaced in an **Ingestion & reconciliation** UI view.
+  normalization, null new-customer, reconciliation, coverage gaps, label maturity,
+  and an **attribution-window conflict** — the observed per-campaign attribution
+  model is compared against the canonical comparison policy and surfaced, never
+  silently normalized). Surfaced in an **Ingestion & reconciliation** UI view.
 - **Stage 3 ✅ — Real engine**: the fixed recommendation is replaced by a
   deterministic engine that **recovers the scenario from observable data** —
-  XGBoost **quantile** BAU forecast (P10/P50/P90, monotonic, gap-aware walk-forward,
-  promoted only if it beats simple baselines) + an **orthogonalized (double-ML)**
+  XGBoost **quantile** BAU forecast (P10/P50/P90, monotonic; promoted over the
+  **champion baseline** — the better of trailing-14d / same-weekday — only when **one
+  shared, frozen selector** (used by both the live engine and the eval report, so they
+  can never disagree, and which returns the *exact* deployed model so the comparison
+  baseline is the deployed baseline) finds it beats that champion by a *material* margin
+  across pre-test folds) + an **orthogonalized (double-ML)**
   residualized spend-response that recovers the marginal-ROAS ordering + a **SciPy
   SLSQP** optimizer maximizing calibrated net contribution under the **calibrated**
   ROAS floor (per-campaign marginal hurdles, prospecting/NC-CPA/movement/inventory
-  constraints), with an explicit infeasibility conflict report. The marginal
-  magnitudes are recovered via adstocked double-ML so the optimizer can lift
-  calibrated blended ROAS across 4.0. Marginal ROAS, reported-vs-calibrated ROAS, and the
-  7-day forecast are shown in the UI.
-- Stage 4 — Trust & business controls (quantiles, calibration sensitivity, approval/audit, inventory, reserve modes, Looker-ready marts).
+  constraints), with an explicit infeasibility conflict report. The two models are
+  composed per the plan: the optimizer's per-campaign revenue **level** is anchored on
+  the **selected BAU forecast** (the forward-7-day P50 ÷ horizon, an average daily
+  level), and the response curve adds only the **spend-change delta** (`R(b) −
+  R(b_current)`, zero at current spend) — so Model A feeds the allocation and the two
+  models cannot double-count. The marginal magnitudes are recovered via adstocked
+  double-ML so the optimizer can lift calibrated blended ROAS across 4.0 (3.76 → 4.06).
+  Marginal ROAS, reported-vs-calibrated ROAS, and the
+  7-day forecast are shown in the UI. The marketer can **adjust constraints live**
+  (validated ROAS floor / NC-CPA / prospecting / movement, Expected vs Conservative)
+  and the plan re-solves in ~10 ms (the expensive forecast/response state is cached).
+  Each plan is an **immutable snapshot** with a deterministic `scenario_id`;
+  **approval binds to that snapshot by id** (never re-solves), over-tightening shows
+  the exact-shortfall conflict report and disables Approve. A structured **"why this
+  plan"** report names which business constraints bind vs. slack and the hard bound
+  pinning each campaign (see [DECISIONS.md](docs/DECISIONS.md) D-025).
+  - **Honest caveats:** NC-CPA is an *approximate monitored guardrail*, not a binding
+    optimizer constraint (it never binds; prospecting share is the real top-of-funnel
+    protection); and the calibration registry copies the scenario's true incrementality,
+    so calibration *error* is still synthetic (the S4.3 sensitivity lever lets you stress
+    it, but it is not measured lift). The 80% prediction interval is now **conformal
+    (CQR) calibrated** (held-out coverage ≈ 83% vs the 80% target, up from ≈ 43% raw) but
+    remains **display-only** — the decision basis is still the marginal ordering + ROAS
+    floor, not the band.
+- **Stage 4 (in progress) — Trust & business controls:** ✅ 4.1 reserve / efficiency-first
+  modes + pacing & budget-utilization view; ✅ 4.2 conformal interval calibration; ✅ 4.3
+  platform-vs-calibrated ROAS calibration registry + live coefficient sensitivity
+  (non-approvable what-ifs). Provenance hardening (D-030): immutable config snapshot, an
+  approved-calibration-registry identity in the scenario id / stale guard / audit,
+  idempotent terminal decisions, and a solver-status + reserve binding report. ✅ 4.4
+  durable, append-only, **hash-chained** audit ledger (SQLite) — decisions survive
+  restarts, are tamper-evident (`GET /api/audit/verify`), and retain full
+  data/config/calibration/binding provenance. ✅ 4.5 **Looker-ready SQL marts** —
+  four single-grain views over the ledger (decision, allocation line, binding
+  constraint, audit chain), served at `/api/marts/{name}` and exportable to DDL +
+  CSV via `make marts`. Stage 4 complete.
 - Stage 5 — Bounded LLM (SKU ranking + grounded narration).
 - Stage 6 — Harden (seeded demo, pretrained artifacts, deployed backup).
 
@@ -79,7 +121,8 @@ complete.**
 
 ```bash
 make setup        # python3.13 venv + EXACT locked deps (engine + API)
-make generate     # write data/canonical/*.csv|parquet|duckdb|manifest.json + data/raw/*.json
+make generate     # write the GOLDEN dataset → data/canonical/*.csv|parquet|duckdb|manifest.json + data/raw/*.json
+make generate-realistic  # write the REALISTIC profile → data/realistic/ (volatility + exogenous spend variation, D-034)
 make test         # run the test suite (engine + API)
 make fingerprint  # print + verify the full-artifact fingerprint (primary)
 make verify-clean-install   # build a throwaway venv from the lock and run the suite
@@ -115,6 +158,20 @@ reproducibility hash is the full-artifact fingerprint** — it covers every
 canonical table plus the Meta/Google/Shopify envelopes, versions, seed, and
 dependency versions (a separate canonical-tables-only fingerprint is also
 recorded). Generation is fully offline and deterministic (`MASTER_SEED`).
+
+### Two dataset profiles (D-034 / D-035)
+Two deterministic profiles share the **same latent truth** but differ in the
+observable driving process, selected via `TC_DATASET_PROFILE`:
+- **`realistic` — the PRIMARY data (default).** Structured seasonality/promos,
+  heteroscedastic noise + shocks, and **exogenous staggered budget experiments**
+  on a subset of campaigns (the rest stay observational). This is what the engine,
+  API, and `reports/model_performance` use. Lives in `data/realistic/`.
+- **`golden` — the regression BENCHMARK.** The tight, smooth known-truth scenario;
+  the test suite pins itself to it (`tests/conftest.py`) so it stays the
+  deterministic anchor. Lives at `data/{raw,canonical}`.
+
+`make generate` writes both; `make generate-realistic` / `make generate-golden`
+write one. `make fingerprint` verifies both pinned fingerprints.
 
 ### Real vs. synthetic vs. latent — three layers
 - **Observable synthetic data** — the API-envelope JSON in `data/raw/` (what an

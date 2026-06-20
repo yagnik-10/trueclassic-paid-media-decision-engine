@@ -12,11 +12,19 @@ plan: `docs/FINAL_PLAN.md`. Decisions/deviations: `docs/DECISIONS.md`.
 ```bash
 make setup        # python3.13 venv + EXACT locked deps (requirements-lock.txt)
 make setup-dev    # looser pyproject ranges for development
-make generate     # regenerate deterministic dataset (+ manifest.json)
-make test         # pytest tests/
+make generate     # regenerate BOTH deterministic datasets (realistic + golden)
+make test         # pytest tests/ (hard-pinned to the golden benchmark)
 make verify-clean-install   # throwaway venv from the lock, generate + test
 ```
 Keep them green. Tests are deterministic and run in ~1s.
+
+**Dataset profiles (D-034 / D-035).** Two deterministic profiles share the same
+latent truth, via `TC_DATASET_PROFILE`. `realistic` is the **PRIMARY/default**
+data (volatility + exogenous spend experiments; `data/realistic/`) used by the
+engine/API/report. `golden` is the smooth **regression benchmark**
+(`data/{raw,canonical}`); the suite hard-pins to it (`tests/conftest.py`). Both
+fingerprints are pinned in `tests/test_fingerprints.py`; golden's must not move
+unintentionally.
 
 ## Conventions
 - Python 3.11–3.13. Imports: `import pandera.pandas as pa`, Pydantic v2.

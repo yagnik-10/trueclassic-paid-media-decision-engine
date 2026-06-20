@@ -23,6 +23,22 @@ const GRID = "#2a3344";
 
 const short = (n: string) => n.replace(/^(Google|Meta)\s*[—-]\s*/, "");
 const money = (n: number) => `$${Math.round(n).toLocaleString()}`;
+const pct = (n: number) => `${Math.round(n * 100)}%`;
+
+function fcBandSubtitle(rec: Recommendation): string {
+  const ic = rec.interval_calibration;
+  const target = ic?.target_coverage ?? 0.8;
+  const nHeuristic = rec.lines.filter((l) => !l.forecast_model.startsWith("xgboost")).length;
+  // Honest about the MIXED band: only XGBoost champions get the conformal-calibrated
+  // interval; baseline champions show an operational ±20% heuristic (not calibrated).
+  const mix = nHeuristic > 0
+    ? `Band is MIXED: conformal-calibrated for XGBoost champions, operational ±20% heuristic (not calibrated) for ${nHeuristic} baseline champion${nHeuristic > 1 ? "s" : ""}.`
+    : `Conformal-calibrated P10–P90 band (all champions are XGBoost).`;
+  if (!ic || !ic.n_calibration) return `P50 with P10–P90 band — display-only, not used for risk sizing. ${mix}`;
+  return `P50 with P10–P90 band. ${mix} XGBoost conformal held-out coverage `
+    + `${pct(ic.calibration_coverage_calibrated)} vs ${pct(target)} target `
+    + `(raw ${pct(ic.calibration_coverage_raw)}). Display-only; the optimizer decides on P50/marginal ROAS.`;
+}
 
 function Panel({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
@@ -90,7 +106,7 @@ export default function Charts({ rec }: { rec: Recommendation }) {
         </BarChart>
       </Panel>
 
-      <Panel title="Saturation / response curves" subtitle="marginal ROAS as spend moves ±20% around current (0% = today)">
+      <Panel title="Local spend-response estimate" subtitle="estimated marginal ROAS within observed support as spend moves ±20% around current (0% = today) — not a fitted saturation model">
         <LineChart data={curve} margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
           <CartesianGrid stroke={GRID} />
           <XAxis dataKey="pct" tick={{ fill: AXIS, fontSize: 11 }} tickFormatter={(v) => `${v > 0 ? "+" : ""}${v}%`} />
@@ -105,7 +121,7 @@ export default function Charts({ rec }: { rec: Recommendation }) {
         </LineChart>
       </Panel>
 
-      <Panel title="7-day revenue forecast" subtitle="P50 with P10–P90 interval (XGBoost quantile or baseline)">
+      <Panel title="7-day revenue forecast" subtitle={fcBandSubtitle(rec)}>
         <BarChart data={fc} margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
           <CartesianGrid stroke={GRID} vertical={false} />
           <XAxis dataKey="name" tick={{ fill: AXIS, fontSize: 11 }} angle={-20} textAnchor="end" height={60} interval={0} />

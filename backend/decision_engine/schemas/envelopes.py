@@ -79,6 +79,10 @@ class GoogleCampaign(BaseModel):
     id: str
     name: str
     advertising_channel_type: str
+    # Attribution model the campaign reports under (e.g. "data_driven",
+    # "last_click"). Carried in the feed so the DQ layer can detect a conflict
+    # with the canonical comparison policy — one campaign intentionally differs.
+    attribution_model: str
 
 
 class GoogleMetrics(BaseModel):

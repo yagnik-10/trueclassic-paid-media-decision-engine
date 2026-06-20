@@ -35,6 +35,27 @@ def hurdle(contribution_margin_rate: float, safety_multiplier: float) -> float:
     return break_even_roas(contribution_margin_rate) * safety_multiplier
 
 
+def cm_roas(pre_ad_contribution: float, ad_spend: float) -> float:
+    """Contribution-margin ROAS — the primary success metric (D-041).
+
+    CM ROAS = (pre-ad contribution dollars) / ad_spend, where pre-ad contribution is
+    Σ marginᵢ·incremental_revenueᵢ. Unlike *gross* ROAS (which must clear the
+    break-even hurdle 1/margin ≈ 2.16× before a dollar of spend pays for itself),
+    CM ROAS breaks even at **1.0× by construction**, so it reads directly as
+    "contribution dollars earned per ad dollar." It is computed on the calibrated
+    (incremental) revenue lens, consistent with the decision basis (D-008).
+    """
+    return pre_ad_contribution / ad_spend if ad_spend else 0.0
+
+
+def net_contribution(pre_ad_contribution: float, ad_spend: float) -> float:
+    """Contribution left after paying for media = pre-ad contribution − ad_spend.
+
+    Identity: net_contribution = (cm_roas − 1) × ad_spend.
+    """
+    return pre_ad_contribution - ad_spend
+
+
 def weighted_contribution_margin() -> float:
     """Spend-weighted pre-ad contribution margin across the campaign mix.
 

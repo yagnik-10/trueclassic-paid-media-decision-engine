@@ -53,8 +53,12 @@ def _dates() -> pd.DatetimeIndex:
     return pd.date_range(C.START_DATE, periods=C.N_DAYS, freq="D")
 
 
-def _calendar_factors(dates: pd.DatetimeIndex) -> dict[str, np.ndarray]:
-    """Deterministic day-of-week, trend and promo multipliers (the confound)."""
+def _calendar_factors(dates: pd.DatetimeIndex, profile: str = "golden") -> dict[str, np.ndarray]:
+    """Deterministic day-of-week, trend and promo multipliers (the confound).
+
+    The ``realistic`` profile layers stronger weekly amplitude, an annual seasonal
+    swing, and more (and larger) promo/holiday windows on top of the same baseline.
+    """
     dow = dates.dayofweek.to_numpy()
     # weekend lift for DTC apparel
     dow_factor = np.where(dow >= 5, 1.18, 1.0) * np.where(dow == 0, 0.92, 1.0)
@@ -64,16 +68,69 @@ def _calendar_factors(dates: pd.DatetimeIndex) -> dict[str, np.ndarray]:
     promo = np.ones(len(dates))
     promo[40:47] = 1.45
     promo[150:158] = 1.55
+    if profile == "realistic":
+        # stronger, asymmetric weekly shape (Fri/Sat/Sun peak, Mon trough)
+        dow_factor = (np.where(dow >= 5, 1.30, 1.0) * np.where(dow == 4, 1.10, 1.0)
+                      * np.where(dow == 0, 0.85, 1.0))
+        # annual seasonality (~+/-12%) so the model must learn a real seasonal signal
+        trend = trend * (1.0 + 0.12 * np.sin(2 * np.pi * (t + 10) / 365.25))
+        # more frequent + holiday-scale promo windows (the big real-world driver)
+        for lo, hi, lift in ((20, 25, 1.35), (40, 47, 1.55), (88, 93, 1.40),
+                             (150, 158, 1.70), (188, 196, 1.85)):
+            promo[lo:hi] = lift
     promo_flag = (promo > 1.0)
     return {"dow": dow_factor, "trend": trend, "promo": promo, "promo_flag": promo_flag}
 
 
+# Realistic profile: campaigns that ran EXOGENOUS budget experiments (staggered
+# +/-15/30% steps + washouts uncorrelated with demand) -> their Hill response is
+# identifiable. The rest stay purely observational (narrow, confounded support) so
+# per-campaign recovery honestly tracks whether that campaign had identifying
+# variation. (Decision-relevant mix; never used by the golden profile.)
+_EXPERIMENTAL_CAMPAIGNS = {"GOOGLE_NONBRAND", "META_PROSPECTING", "GOOGLE_PMAX"}
+_INTERVENTION_OFFSET = {"GOOGLE_NONBRAND": 0, "META_PROSPECTING": 17, "GOOGLE_PMAX": 33}
+_INTERVENTION_STEPS = ((30, 55, 1.30), (70, 95, 0.70), (110, 135, 1.15), (160, 185, 0.85))
+_WASHOUT_WINDOWS = ((96, 100), (143, 147))
+
+
+def _intervention_schedule(campaign_id: str, n: int) -> np.ndarray:
+    """Deterministic exogenous budget-step multiplier (1.0 if not experimental)."""
+    m = np.ones(n)
+    if campaign_id not in _EXPERIMENTAL_CAMPAIGNS:
+        return m
+    off = _INTERVENTION_OFFSET[campaign_id]
+    for lo, hi, lift in _INTERVENTION_STEPS:
+        s = (lo + off) % n
+        m[s:min(s + (hi - lo), n)] = lift
+    return m
+
+
+def _apply_washouts(campaign_id: str, target: np.ndarray) -> np.ndarray:
+    """Short near-pause windows (experimental campaigns) so adstock decay is identified."""
+    if campaign_id not in _EXPERIMENTAL_CAMPAIGNS:
+        return target
+    t = target.copy()
+    for lo, hi in _WASHOUT_WINDOWS:
+        t[lo:hi] *= 0.15
+    return t
+
+
 def _simulate_campaign(c: S.Campaign, dates: pd.DatetimeIndex,
-                       cal: dict[str, np.ndarray], rng: np.random.Generator) -> pd.DataFrame:
+                       cal: dict[str, np.ndarray], rng: np.random.Generator,
+                       profile: str = "golden",
+                       rrng: np.random.Generator | None = None) -> pd.DataFrame:
     n = len(dates)
     # Target spend before capping: operating point modulated by calendar + noise.
     noise = rng.normal(1.0, c.noise_cv, n).clip(0.4, 1.8)
     target = c.base_spend * cal["dow"] * cal["trend"] * (1.0 + 0.25 * (cal["promo"] - 1.0)) * noise
+    if profile == "realistic":
+        # exogenous budget experiments + wider/heteroscedastic operating noise +
+        # adstock washouts (all from an INDEPENDENT stream; golden draws untouched).
+        interv = _intervention_schedule(c.campaign_id, n)
+        op_noise = rrng.normal(1.0, max(c.noise_cv, 0.10), n).clip(0.3, 2.2)
+        target = (c.base_spend * cal["dow"] * cal["trend"]
+                  * (1.0 + 0.25 * (cal["promo"] - 1.0)) * interv * op_noise)
+        target = _apply_washouts(c.campaign_id, target)
     spend = np.minimum(target, c.daily_cap)
     cap_hit = target > c.daily_cap
 
@@ -85,7 +142,17 @@ def _simulate_campaign(c: S.Campaign, dates: pd.DatetimeIndex,
         a[i] = prev
 
     incr_rev = np.asarray(S.hill_revenue(a, c))
-    rev_noise = rng.normal(1.0, 0.05, n).clip(0.7, 1.3)
+    if profile == "realistic":
+        # heteroscedastic, mean-preserving revenue noise (noisier at low utilization)
+        # + sparse two-sided shocks. Kept below the identifiability-break point.
+        util = spend / max(c.daily_cap, 1.0)
+        sigma = (0.12 + 0.10 * (1.0 - np.clip(util, 0.0, 1.0))).astype(float)
+        rev_noise = rrng.lognormal(-0.5 * sigma * sigma, sigma)
+        hit = rrng.random(n) < 0.04
+        shock = np.where(rrng.random(n) < 0.5, 1.8, 1.0 / 1.8)
+        rev_noise = np.where(hit, rev_noise * shock, rev_noise).clip(0.4, 2.5)
+    else:
+        rev_noise = rng.normal(1.0, 0.05, n).clip(0.7, 1.3)
     incr_rev = incr_rev * rev_noise
     organic = c.organic_base * cal["dow"] * cal["promo"]
 
@@ -369,15 +436,28 @@ def _apply_commerce_defects(commerce: pd.DataFrame, fact: pd.DataFrame,
     return commerce
 
 
-def generate(seed: int = C.MASTER_SEED) -> Dataset:
-    """Generate the full canonical dataset deterministically from ``seed``."""
+def generate(seed: int = C.MASTER_SEED, profile: str | None = None) -> Dataset:
+    """Generate the full canonical dataset deterministically from ``seed``.
+
+    ``profile`` selects the observable driving process (``golden`` = the smooth
+    known-truth benchmark; ``realistic`` = structured volatility + exogenous spend
+    variation). The latent truth (scenario.py response/incrementality) is identical
+    across profiles, so known-truth grading stays valid. Defaults to the active
+    ``TC_DATASET_PROFILE``.
+    """
+    profile = profile or C.DATASET_PROFILE
     dates = _dates()
-    cal = _calendar_factors(dates)
+    cal = _calendar_factors(dates, profile)
     log = IssueLog()
 
-    # Per-campaign simulation with independent, reproducible child streams.
-    frames = [_simulate_campaign(c, dates, cal, _rng(seed, i))
-              for i, c in enumerate(S.CAMPAIGNS)]
+    # Per-campaign simulation with independent, reproducible child streams. The
+    # realistic profile draws its extra volatility from a SEPARATE stream (spawn
+    # path 1000+i) so the golden draw sequence is byte-for-byte unchanged.
+    frames = [
+        _simulate_campaign(c, dates, cal, _rng(seed, i), profile,
+                           _rng(seed, 1000 + i) if profile == "realistic" else None)
+        for i, c in enumerate(S.CAMPAIGNS)
+    ]
     fact_full = pd.concat(frames, ignore_index=True)
 
     # Commerce truth from the pre-defect truth columns.

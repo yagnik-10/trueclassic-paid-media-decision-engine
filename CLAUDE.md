@@ -69,9 +69,17 @@ approval/audit, reserve modes, Looker-ready marts). The LLM is Stage 5 — not y
 Engine numbers are deterministic (fixed seeds, `n_jobs=1`); xgboost needs the
 OpenMP runtime (`brew install libomp`).
 
+## Dataset profiles (D-034 / D-035)
+Two deterministic profiles share the same latent truth, selected via
+`TC_DATASET_PROFILE`. **`realistic` is the PRIMARY/default data** (volatility +
+exogenous spend experiments; `data/realistic/`) — what the engine/API/report use.
+**`golden`** is the smooth known-truth **regression benchmark** (`data/{raw,canonical}`);
+the test suite hard-pins to it in `tests/conftest.py`, so golden stays the
+deterministic anchor. Both fingerprints are pinned; `make generate` writes both.
+
 ## Workflow
 - `make setup && make generate && make test` must stay green.
-- If you change generated values, regenerate and update
-  `tests/test_fingerprints.py::EXPECTED_COMBINED_FINGERPRINT`, recording why in
-  `docs/DECISIONS.md`.
+- If you change generated values, regenerate and update the pinned fingerprints in
+  `tests/test_fingerprints.py` (golden AND realistic), recording why in
+  `docs/DECISIONS.md`. Golden's fingerprint must not move unless intentionally.
 - Match the surrounding code's style and comment density.

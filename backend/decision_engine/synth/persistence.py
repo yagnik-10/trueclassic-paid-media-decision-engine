@@ -88,17 +88,23 @@ def write_duckdb(ds: Dataset, db_path: Path = C.CANONICAL_DIR / "decision_engine
         con.close()
 
 
-def write_manifest_file(ds: Dataset, write_latent: bool = False) -> Path:
+def write_manifest_file(ds: Dataset, write_latent: bool = False,
+                        canonical_dir: Path = C.CANONICAL_DIR) -> Path:
     from backend.decision_engine.synth.manifest import write_manifest
 
-    return write_manifest(ds, include_latent=write_latent)
+    return write_manifest(ds, path=canonical_dir / "manifest.json", include_latent=write_latent)
 
 
-def write_all(ds: Dataset, write_latent: bool = False) -> None:
-    """Normal demo-generation path. Does NOT persist latent truth by default."""
-    write_canonical(ds)
-    write_raw(ds)
-    write_duckdb(ds)
-    write_manifest_file(ds, write_latent=write_latent)
+def write_all(ds: Dataset, write_latent: bool = False, profile: str | None = None) -> None:
+    """Normal demo-generation path. Does NOT persist latent truth by default.
+
+    Dirs are resolved from ``profile`` at CALL time (not the import-time active
+    profile), so generating one profile can never overwrite another's folder.
+    """
+    paths = C.profile_paths(profile)
+    write_canonical(ds, paths["canonical"])
+    write_raw(ds, paths["raw"])
+    write_duckdb(ds, paths["canonical"] / "decision_engine.duckdb")
+    write_manifest_file(ds, write_latent=write_latent, canonical_dir=paths["canonical"])
     if write_latent:
-        write_latent_truth(ds)
+        write_latent_truth(ds, paths["latent"])

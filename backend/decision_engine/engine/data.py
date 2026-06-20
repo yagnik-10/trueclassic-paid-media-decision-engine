@@ -13,9 +13,11 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from backend.decision_engine.calibration.registry import calibration_map
+from backend.decision_engine.config import FORECAST_HORIZON_DAYS
 from backend.decision_engine.ingestion.pipeline import IngestionReport, run_ingestion
 
-FORWARD_DAYS = 7
+FORWARD_DAYS = FORECAST_HORIZON_DAYS
 ADSTOCK_DECAY = 0.5  # feature-level adstock; the response module re-estimates decay
 
 
@@ -44,10 +46,11 @@ def _fourier(t: np.ndarray, period: float, k: int) -> dict[str, np.ndarray]:
     return cols
 
 
-def build_panel(report: IngestionReport) -> EngineInputs:
+def build_panel(report: IngestionReport,
+                calibration_overrides: dict[str, float] | None = None) -> EngineInputs:
     fact = report.fact
     fact = fact[~fact["is_duplicate"]].copy()
-    calibration = _calibration_map()  # segment -> synthetic incrementality coefficient
+    calibration = calibration_map(calibration_overrides)
 
     fact["date"] = pd.to_datetime(fact["date"])
     fact = fact.sort_values(["campaign_id", "date"]).reset_index(drop=True)
@@ -91,13 +94,6 @@ def build_panel(report: IngestionReport) -> EngineInputs:
     )
 
 
-def _calibration_map() -> dict[str, float]:
-    """segment -> incrementality coefficient, from the synthetic calibration registry."""
-    from backend.decision_engine.synth.generator import generate
-
-    reg = generate().tables["calibration_registry"]
-    return dict(zip(reg["segment"], reg["coefficient"].astype(float)))
-
-
-def load_engine_inputs(report: IngestionReport | None = None) -> EngineInputs:
-    return build_panel(report or run_ingestion())
+def load_engine_inputs(report: IngestionReport | None = None,
+                       calibration_overrides: dict[str, float] | None = None) -> EngineInputs:
+    return build_panel(report or run_ingestion(), calibration_overrides)
