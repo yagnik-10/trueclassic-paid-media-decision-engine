@@ -20,8 +20,14 @@ data/raw/*
 data/internal/
 
 # Realistic profile (D-034): regenerate with `make generate-realistic`. Its
-# fingerprint is pinned in tests; the bytes are reproducible so not committed.
-data/realistic/
+# fingerprint is pinned in tests; the bytes are reproducible so not committed —
+# only the dir placeholders are tracked (symmetric to golden). The latent
+# internal/ truth is NEVER committed.
+data/realistic/canonical/*
+data/realistic/raw/*
+data/realistic/internal/
+!data/realistic/canonical/.gitkeep
+!data/realistic/raw/.gitkeep
 
 # Durable append-only audit store (Stage 4.4) — runtime decision log (sqlite)
 data/audit/
