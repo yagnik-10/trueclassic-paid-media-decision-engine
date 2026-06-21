@@ -4,6 +4,12 @@ Generated artifacts. **All synthetic and deterministic** — regenerate with
 `make generate` (or `python scripts/generate_synthetic_data.py`). These files are
 gitignored; only `.gitkeep` placeholders are tracked.
 
+**Two profiles** share the same latent truth (selected via `TC_DATASET_PROFILE`):
+the smooth `golden` benchmark lives here under `raw/` + `canonical/` (the test
+anchor); the **`realistic`** profile — the primary data the engine/API/report use
+— lives under `realistic/` (same layout). `make generate` writes both. The runtime
+decision/audit ledger is a separate durable SQLite store under `audit/`.
+
 ## `raw/` — API-envelope-shaped JSON (Stage-2 adapter inputs)
 - `meta_insights.json` — Meta Marketing API `data/paging` envelope; numeric
   fields are strings; conversions in `actions` / `action_values`. Carries the
@@ -21,8 +27,10 @@ The 13 canonical tables (`fact_ad_performance`, `dim_campaign`, `dim_sku`,
 (SQL-queryable copy) and `manifest.json` (seed, versions, row counts, logical
 fingerprints).
 
-Operational tables (`model_run` … `execution_event`) are intentionally empty in
-Stage 0 — populated by later stages.
+Operational tables (`model_run` … `execution_event`) are intentionally **empty
+canonical placeholders**: live recommendations, approvals, and stubbed executions
+flow through the API and the durable, hash-chained audit ledger (`data/audit/`),
+not these CSVs.
 
 ## `internal/latent/` — internal latent generator truth (NOT a model input)
 `scenario_truth.json` (marginal ROAS, incrementality, noise — the known response

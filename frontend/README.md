@@ -6,12 +6,14 @@ every number it shows comes from the engine, and every action (recompute,
 approve/reject, SKU resolution) calls a real backend endpoint. The UI never
 computes allocations itself.
 
-Five workspaces:
+Seven workspaces:
 
-- **Decision Overview** — executive summary, budget allocation, execution preview.
+- **Decision Overview** — executive summary, budget allocation, execution preview, and the bounded LLM plan narration.
 - **Data Unification** — live ingestion: source health, SKU reconciliation, DQ ledger.
 - **Forecast & Response** — BAU forecast bands + local CM-response curves.
 - **Budget Planner** — constraint editor (draft → Recompute) + feasibility report.
+- **Buyer & Inventory** — inventory handoff: days of cover, stockout risk, reorder qty, inventory no-scale flags.
+- **Model Evidence** — champion-selection evidence + interactive forecast-accuracy charts, with a fresh/stale verdict.
 - **Audit & Business Controls** — append-only, hash-chained decision ledger.
 
 ## Run locally

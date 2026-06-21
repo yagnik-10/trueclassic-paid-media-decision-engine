@@ -39,3 +39,10 @@ frontend/dist/
 
 # Confidential: the original company exercise brief — never publish
 TrueClassic_AIExercise_PaidMedia_v2.docx
+
+# Internal planning/decision docs — kept local, not published
+docs/
+
+# Internal AI-build guidance (pairs with docs/) — kept local
+CLAUDE.md
+AGENTS.md
