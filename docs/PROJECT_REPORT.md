@@ -864,16 +864,20 @@ lives in **how the system was built**, not in fragile live agentic behaviour
 
 ### Tools used (only what is evidenced in the repo)
 
-- **Claude Code (Opus during development)** — the primary builder: schema
-  contracts, deterministic generator, defect catalog, tests, docs, and the
-  staged engine/UI work.
+- **Build-time AI — Claude Code / Cursor (Claude Opus/Sonnet during development)** —
+  the primary builders: schema contracts, deterministic generator, defect catalog,
+  tests, docs, and the staged engine/UI work.
 - **A second AI reviewer (Codex)** — audited Stage 0; each finding was verified
   against the code before acting.
 - **Deterministic Python (numpy / pandas / Pandera / Pydantic / scipy / xgboost)**
-  does all numerical work. The **runtime LLM is Stage 5 — planned, not built**;
-  when added it is bounded to ranking allowed SKU candidates and narrating
-  already-computed results (`claude-sonnet-4-6`), with a deterministic template
-  fallback for every feature.
+  does **all** numerical work. The **runtime narrator (Stage 5)** is a bounded LLM
+  sidecar: it never computes budgets, ranks, approves, or executes — it only
+  narrates an already-computed snapshot, and every figure on screen is rendered
+  from app state, never parsed from the prose. The provider is selected from
+  environment keys (OpenAI `OPENAI_API_KEY` first, else Anthropic
+  `ANTHROPIC_API_KEY`); **in this demo it is served by `gpt-4o-mini`**. A
+  deterministic template fallback runs whenever no key is set or the live
+  call/grounding check fails.
 
 ### What AI generated vs. where the human intervened
 

@@ -257,5 +257,6 @@ docs/                      FINAL_PLAN, DECISIONS, AI_WORKFLOW
 
 Vite + React 19 + TypeScript (web UI, `frontend/`) · FastAPI + Python (backend) ·
 DuckDB + pandas (analytics) · Pandera + Pydantic (validation) ·
-XGBoost + SciPy SLSQP (Stage 3 modeling) · Claude (Stage 5 bounded LLM,
-`claude-sonnet-4-6`, with deterministic fallbacks).
+XGBoost + SciPy SLSQP (Stage 3 modeling) · bounded LLM narrator (Stage 5 —
+OpenAI or Anthropic via env keys; served by `gpt-4o-mini` in this demo, with a
+deterministic template fallback). Build-time AI: Claude Code / Cursor.

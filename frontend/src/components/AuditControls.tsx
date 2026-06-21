@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ExternalLink,
   X,
@@ -33,6 +34,7 @@ export default function AuditControls() {
   const [chain, setChain] = useState<AuditChainStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
+  const [justVerified, setJustVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<DecisionResponse | null>(null);
   const [isCopied, setIsCopied] = useState(false);
@@ -58,9 +60,18 @@ export default function AuditControls() {
 
   const runVerify = async () => {
     setVerifying(true);
+    setJustVerified(false);
     try {
-      setChain(await verifyAuditChain());
+      // the chain walk is ~10ms; pace it so the "Verifying…" state is perceptible,
+      // then flash a "Re-verified ✓" confirmation (the result is often unchanged).
+      const [status] = await Promise.all([
+        verifyAuditChain(),
+        new Promise((r) => setTimeout(r, 350)),
+      ]);
+      setChain(status);
       setError(null);
+      setJustVerified(true);
+      setTimeout(() => setJustVerified(false), 1800);
     } catch (e: any) {
       setError(e?.message ?? String(e));
     } finally {
@@ -119,10 +130,16 @@ export default function AuditControls() {
           <button
             onClick={runVerify}
             disabled={verifying || loading}
-            className="px-3 py-1.5 rounded-lg flex items-center gap-1.5 border border-[#c6c6cd] text-xs font-semibold text-[#131b2e] hover:bg-gray-100 transition-colors disabled:opacity-50"
+            className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 border text-xs font-semibold transition-colors disabled:opacity-50 ${
+              justVerified
+                ? 'border-[#6cf8bb]/50 text-[#006c49] bg-[#d1fae5]'
+                : 'border-[#c6c6cd] text-[#131b2e] hover:bg-gray-100'
+            }`}
           >
-            {verifying ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-            Verify chain
+            {verifying ? <Loader2 size={13} className="animate-spin" />
+              : justVerified ? <Check size={13} />
+              : <RefreshCw size={13} />}
+            {verifying ? 'Verifying…' : justVerified ? 'Re-verified ✓' : 'Verify chain'}
           </button>
         </div>
       </header>
@@ -306,9 +323,9 @@ export default function AuditControls() {
                     <h5 className="text-xs font-bold text-[#78350f]">Coefficients are registry-governed</h5>
                     <p className="text-xs text-[#45464d] mt-1 leading-normal">
                       These are the incrementality coefficients <b>actually applied</b> to the active
-                      plan. To explore alternatives, run a <b>sensitivity what-if</b> (New Optimization →
-                      calibration overrides) — a sensitivity plan is flagged and can never be approved
-                      or executed. Approving a revised coefficient means promoting it in the registry.
+                      plan. To explore alternatives, run a <b>sensitivity what-if</b> with calibration
+                      overrides — a sensitivity plan is flagged and can never be approved or executed.
+                      Approving a revised coefficient means promoting it in the registry.
                     </p>
                   </div>
                 </div>
@@ -361,8 +378,10 @@ export default function AuditControls() {
         </div>
       </div>
 
-      {/* Real decision-record JSON modal */}
-      {selected && (
+      {/* Real decision-record JSON modal — portaled to <body> so the overlay
+          escapes the transformed (animate-fade-in) page wrapper and blurs the
+          entire viewport, not just the content panel. */}
+      {selected && createPortal(
         <div className="fixed inset-0 bg-[#131b2e]/60 backdrop-blur-xs flex items-center justify-center z-50 animate-fade-in p-4">
           <div className="bg-white rounded-xl max-w-2xl w-full flex flex-col shadow-2xl border border-[#e2e8f0]">
             <div className="p-4 border-b border-[#e2e8f0] flex justify-between items-center bg-[#f8f9ff] rounded-t-xl">
@@ -403,7 +422,8 @@ export default function AuditControls() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

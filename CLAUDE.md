@@ -65,9 +65,13 @@ Stage 2 (real ingestion: adapters, validation/quarantine, SKU resolution, DQ
 detection), Stage 3 (real engine in `backend/decision_engine/engine/` — XGBoost
 quantile BAU forecast + baselines, orthogonalized/double-ML residualized response,
 SciPy SLSQP optimizer with feasibility handling; the recommendation is now a real
-optimizer result, `is_fixed_placeholder=False`). Next is Stage 4 (trust & business
+optimizer result, `is_fixed_placeholder=False`). Stage 4 (trust & business
 controls: quantile/uncertainty charts, calibration sensitivity, durable
-approval/audit, reserve modes, Looker-ready marts). The LLM is Stage 5 — not yet.
+approval/audit, reserve modes, Looker-ready marts) is also in place. **Stage 5
+(bounded LLM) has begun:** the recommendation narrator is live (narration only,
+deterministic fallback — `backend/api/llm.py`, `GET …/narration`, D-047); SKU
+ranking and NL constraint parsing are still pending. The LLM never computes,
+allocates, or executes — numbers always render from app state.
 Engine numbers are deterministic (fixed seeds, `n_jobs=1`); xgboost needs the
 OpenMP runtime (`brew install libomp`).
 

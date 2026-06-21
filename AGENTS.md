@@ -61,5 +61,9 @@ Stage 3 (done): real engine (`backend/decision_engine/engine/`) — XGBoost quan
 BAU forecast + baselines, orthogonalized (double-ML) residualized response, SciPy
 SLSQP optimizer with feasibility handling. The recommendation is a real optimizer
 result. xgboost needs OpenMP (`brew install libomp`).
-Next: Stage 4 trust & business controls (uncertainty charts, calibration
-sensitivity, durable approval/audit, reserve modes). See `docs/FINAL_PLAN.md` §11.
+Stage 4 (done): trust & business controls (uncertainty charts, calibration
+sensitivity, durable approval/audit, reserve modes, Looker-ready marts).
+Stage 5 (in progress): bounded LLM. The recommendation narrator is live
+(`backend/api/llm.py`, `GET /api/recommendation/{id}/narration`) — narration only,
+deterministic fallback, never numeric (D-047). SKU ranking + NL constraints
+pending. See `docs/FINAL_PLAN.md` §8 / §11.

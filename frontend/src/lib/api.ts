@@ -440,6 +440,23 @@ export async function getRecommendation(
   return res.json();
 }
 
+// Stage 5 bounded narrator: prose-only explanation of a stored snapshot. `source`
+// is "llm" (live Claude call) or "fallback" (deterministic template). Numbers in
+// the UI always render from app state, never parsed from this text.
+export interface Narration {
+  text: string;
+  source: "llm" | "fallback";
+  model: string;
+}
+
+export async function getNarration(scenarioId: string): Promise<Narration> {
+  const res = await fetch(`${API_BASE}/api/recommendation/${scenarioId}/narration`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw await asError(res, `narration failed: ${res.status}`);
+  return res.json();
+}
+
 export async function getExecutionPreview(scenarioId: string): Promise<ExecutionPreview> {
   // read-only: the stubbed set-budget payloads approval WOULD commit (no live write).
   const res = await fetch(`${API_BASE}/api/recommendation/${scenarioId}/execution-preview`, {

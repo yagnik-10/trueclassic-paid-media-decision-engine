@@ -1242,6 +1242,66 @@ byte-identical across runs (the marts manifest/CSVs carry a wall-clock `generate
 `test_deployed_interval_metrics_pool_and_split_by_model` and `tests/test_report_consistency.py`;
 full suite green.
 
+## D-047 — Stage 5 begins: bounded LLM **recommendation narrator** (narration only)
+**Stage 5 (first slice).** FINAL_PLAN §8 scopes the LLM to three bounded, off-critical-path
+features, each with a deterministic fallback. This entry ships the **recommendation
+narrator** (§8.2) — the highest-visibility, lowest-risk one — and defers SKU ranking (§8.1)
+and NL constraint parsing (§8.3).
+
+**Decision.** A new API-layer module `backend/api/llm.py` turns an immutable optimizer
+snapshot into a 2-3 sentence plain-English narration, exposed at
+`GET /api/recommendation/{scenario_id}/narration` (`NarrationResponse{text, source, model}`).
+The web UI's "Engine Recommendation" card now renders that prose
+(`frontend/src/components/DecisionOverview.tsx`, fetched via `getNarration`), with a small
+"AI narration" badge shown only when `source == "llm"`.
+
+**Trust boundary (the whole point).** The LLM **never computes, allocates, ranks, or
+executes** — every number in the UI still renders from app state, never parsed from the
+prose. `grounding_facts()` hands the model only already-computed, leakage-free figures
+(no latent truth). The system prompt states the boundary explicitly.
+
+**Anti-hallucination guardrails (defense-in-depth).** Beyond the structural guarantee
+above: (1) bounded, rounded, leakage-free input; (2) a strict system prompt — quote
+figures exactly, derive nothing, name only campaigns in the facts, no
+causality/guarantee/certainty language; (3) low temperature (0.2); and (4) a
+**post-generation validator** `is_grounded(text, rec)` that discards a live narration
+(→ deterministic template) if it fabricates a platform-prefixed campaign not in the plan,
+uses banned overclaim language, or runs over length/sentence bounds. The deterministic
+fallback is tested to always pass its own validator, so rejection always has a safe net.
+The validator is deliberately conservative (high precision, avoids false fallbacks); it
+does **not** yet verify every numeric token in the prose — acceptable because no displayed
+number is ever sourced from the prose.
+
+**Live vs fallback.** The live path is **dual-provider over httpx** (already a locked dep —
+no new package, no SDK): **OpenAI** Chat Completions (`OPENAI_API_KEY`, `OPENAI_MODEL`
+default `gpt-4o-mini`) is tried first, then **Anthropic** Messages (`ANTHROPIC_API_KEY`,
+`LLM_MODEL` default `claude-sonnet-4-6`). FINAL_PLAN §10 names Claude as the intended model;
+OpenAI was added as an alternative provider so whoever runs the demo can use the key they
+have — the trust boundary (narration only, numbers from app state) is provider-independent.
+On a missing key, missing dep, or ANY transport/API error it silently degrades to
+`deterministic_narration()`, a self-contained template that mirrors the engine's honest
+data-derived summary. So the demo never depends on a live LLM. The API auto-loads a local
+`.env` at startup (`python-dotenv`, bundled with `uvicorn[standard]`) so keys need no shell
+export — restart the API after editing `.env`.
+
+**Risk / impact.** No change to numeric behaviour, schemas of the recommendation, fingerprints,
+or the engine — the narrator lives entirely in the API/UI layer. New tests
+`tests/test_llm_narration.py` pin the offline path (fallback source, grounding, purity/
+stability, 404, no latent-truth leak); the live network path is intentionally not tested
+here. **Not a fingerprint change.**
+
+**Addendum — executive narration style (still narration-only).** The narrator was reworked
+from a per-campaign enumeration to a concise *pattern + why* executive paragraph: name 2-3
+representative campaigns per side, explain the reason (a campaign's `marginal_cm_roas` vs the
+`cm_hurdle` — scale where strongest, trim where saturated/below hurdle), and quote figures
+verbatim from **pre-formatted** strings in `grounding_facts` (`3.93× → 4.19×`, `+$17.2K/day`).
+Pre-formatting the figures keeps numbers exact (the model echoes, never reformats) and helps
+the grounding check. `grounding_facts` now also carries per-line `marginal_cm_roas`/`pacing`
+(the "why") — still derived purely from the snapshot, no latent truth. The deterministic
+fallback mirrors the same style. Docs (`README`, `AI_WORKFLOW`, `PROJECT_REPORT`) were
+corrected to state the runtime narrator is **`gpt-4o-mini` in this demo** (Claude/Anthropic
+remains a supported provider), not Claude Sonnet, per the brief's "name the exact models" ask.
+
 ## D-046 — Web UI folder renamed `true-classic/` → `frontend/`
 **Stage 4, UI track (cosmetic/structural — no behaviour change).** The Vite + React SPA
 introduced in D-043 lived in `true-classic/`. That name was ambiguous (a folder literally

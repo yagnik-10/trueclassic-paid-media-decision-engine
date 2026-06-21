@@ -1,5 +1,4 @@
 import {
-  Search,
   RefreshCw,
   RotateCcw,
   CheckCheck,
@@ -34,22 +33,8 @@ export default function Header() {
 
   return (
     <header className="h-14 bg-white border-b border-[#e2e8f0] sticky top-0 z-20 flex justify-between items-center px-8 select-none">
-      {/* Global Context Search Bar */}
-      <div className="flex-1 max-w-md mr-8 hidden lg:block">
-        <div className="relative w-full">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#76777d]">
-            <Search size={15} />
-          </span>
-          <input
-            type="text"
-            placeholder="Search parameters, models, or audits..."
-            className="w-full text-xs h-8 pl-9 pr-4 rounded-full bg-[#eef4ff] border border-[#c6c6cd]/40 focus:outline-none focus:border-[#00714d] focus:ring-1 focus:ring-[#00714d] transition-colors"
-          />
-        </div>
-      </div>
-
       {/* Action Buttons & Profile controls */}
-      <div className="flex items-center gap-5">
+      <div className="flex items-center gap-5 ml-auto">
         {/* Dynamic Action Buttons */}
         <div className="flex items-center gap-2.5">
           <button
@@ -111,7 +96,7 @@ export default function Header() {
 
         {/* User profile */}
         <div className="w-8 h-8 rounded-full bg-[#d4e4fa] overflow-hidden border border-[#c6c6cd] shrink-0 flex items-center justify-center text-[#0d1c2d] text-xs font-bold">
-          TC
+          YP
         </div>
       </div>
     </header>

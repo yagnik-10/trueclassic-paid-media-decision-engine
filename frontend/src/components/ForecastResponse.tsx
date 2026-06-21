@@ -15,6 +15,40 @@ const money = (n: number) =>
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 const shortName = (n: string) => n.replace(/^(Google|Meta)\s*[—-]\s*/, '');
 
+// The forecast band chart only needs these fields — so it can render either real
+// campaign lines or synthetic per-channel rollups (sum of a channel's campaigns).
+type BandDatum = Pick<
+  CampaignLine,
+  'campaign_id' | 'campaign_name' | 'platform' | 'forecast_p10' | 'forecast_p50' | 'forecast_p90' | 'forecast_model'
+>;
+
+// Roll campaign lines up to per-channel (platform) bars. Quantiles don't strictly add,
+// so the summed P10/P90 band is a display approximation (noted in the subtitle); the P50
+// sum is the channel's expected 7-day revenue. Used only for the per-channel forecast view.
+function channelBands(lines: CampaignLine[]): BandDatum[] {
+  const m = new Map<string, BandDatum & { _allConformal: boolean }>();
+  for (const l of lines) {
+    const p = l.platform.toLowerCase();
+    const key = p.includes('google') ? 'google' : p.includes('meta') ? 'meta' : p;
+    const name = key === 'google' ? 'Google Ads' : key === 'meta' ? 'Meta Ads' : l.platform;
+    const conformal = modelInfo(l.forecast_model).conformal;
+    const cur = m.get(key) ?? {
+      campaign_id: key, campaign_name: name, platform: key,
+      forecast_p10: 0, forecast_p50: 0, forecast_p90: 0,
+      forecast_model: 'xgboost_quantile', _allConformal: true,
+    };
+    cur.forecast_p10 += l.forecast_p10;
+    cur.forecast_p50 += l.forecast_p50;
+    cur.forecast_p90 += l.forecast_p90;
+    cur._allConformal = cur._allConformal && conformal;
+    m.set(key, cur);
+  }
+  return [...m.values()].map(({ _allConformal, ...d }) => ({
+    ...d,
+    forecast_model: _allConformal ? 'xgboost_quantile' : 'baseline_mixed',
+  }));
+}
+
 function platformLogo(platform: string) {
   const p = platform.toLowerCase();
   const key = p.includes('google') ? 'google' : p.includes('meta') ? 'meta' : p.includes('shopify') ? 'shopify' : '';
@@ -95,10 +129,14 @@ function ForecastBandChart({
   lines,
   selectedId,
   onSelect,
+  neutral = false,
 }: {
-  lines: CampaignLine[];
+  lines: BandDatum[];
   selectedId: string;
   onSelect: (id: string) => void;
+  // channel rollups mix campaign champions, so bar fill can't honestly mean
+  // "XGBoost vs Baseline" — paint them one neutral P50 colour instead.
+  neutral?: boolean;
 }) {
   const domainMax = Math.max(1, ...lines.map((l) => l.forecast_p90));
   const yTicks = ticks(0, domainMax);
@@ -169,7 +207,7 @@ function ForecastBandChart({
                 y={p50y}
                 width={barW}
                 height={Math.max(0, H - p50y)}
-                fill={isSel ? '#006c49' : info.conformal ? '#3bc6c2' : '#9aa6bd'}
+                fill={isSel ? '#006c49' : neutral ? '#3bc6c2' : info.conformal ? '#3bc6c2' : '#9aa6bd'}
                 opacity={isSel ? 0.95 : isHov ? 0.8 : 0.55}
               />
               {/* P10–P90 whisker */}
@@ -181,17 +219,18 @@ function ForecastBandChart({
         })}
       </svg>
 
-      {/* x labels — wrap (don't truncate) so every channel is readable, clickable */}
+      {/* x labels — platform logo + name so the Google/Meta channel is explicit per bar */}
       <div className="absolute bottom-0 left-12 right-2 h-11 flex items-start text-[9px] font-semibold text-[#76777d]">
         {lines.map((l) => (
           <button
             type="button"
             key={l.campaign_id}
             onClick={() => onSelect(l.campaign_id)}
-            className={`flex-1 text-center px-0.5 leading-[1.15] break-words hover:text-[#006c49] transition-colors ${l.campaign_id === selectedId ? 'text-[#006c49] font-bold' : ''}`}
+            className={`flex-1 flex flex-col items-center gap-0.5 px-0.5 leading-[1.15] hover:text-[#006c49] transition-colors ${l.campaign_id === selectedId ? 'text-[#006c49] font-bold' : ''}`}
             title={l.campaign_name}
           >
-            {shortName(l.campaign_name)}
+            <PlatformLogo platform={l.platform} className="w-3 h-3" />
+            <span className="text-center break-words">{shortName(l.campaign_name)}</span>
           </button>
         ))}
       </div>
@@ -408,6 +447,9 @@ export default function ForecastResponse() {
   const { rec, loading, solving, error } = useRecommendation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [respMode, setRespMode] = useState<'revenue' | 'marginal'>('revenue');
+  // Forecast-band grouping: per individual campaign (default, most granular) or rolled
+  // up per channel/platform (Google Ads vs Meta Ads), to match the brief's "per-channel".
+  const [forecastDim, setForecastDim] = useState<'campaign' | 'channel'>('campaign');
 
   const selected = useMemo<CampaignLine | null>(() => {
     if (!rec) return null;
@@ -432,6 +474,9 @@ export default function ForecastResponse() {
 
   const ic = rec.interval_calibration;
   const nHeuristic = rec.lines.filter((l) => !modelInfo(l.forecast_model).conformal).length;
+  // Forecast-band data: per-channel rollup or per-campaign (default). The right-hand
+  // response curve stays per-campaign, so channel mode disables band selection.
+  const forecastBands: BandDatum[] = forecastDim === 'channel' ? channelBands(rec.lines) : rec.lines;
   const selInfo = modelInfo(selected.forecast_model);
   const selSpread = selected.forecast_p50 > 0
     ? (selected.forecast_p90 - selected.forecast_p10) / selected.forecast_p50
@@ -455,7 +500,7 @@ export default function ForecastResponse() {
     selPeak !== null && selPeak >= -20 && selPeak <= 20
       ? `Diminishing returns: local revenue peaks near ${selPeak >= 0 ? '+' : ''}${Math.round(selPeak)}% spend (marginal hits zero), so scaling past it adds spend faster than contribution.`
       : selected.response_quad < 0 && selPeak !== null && selPeak < -20
-      ? 'Past its local peak — calibrated revenue / day falls as spend rises across the range, so the optimizer reduces spend.'
+      ? 'Past its local peak — calibrated revenue falls as spend rises across the range, so the optimizer reduces spend.'
       : selected.response_quad < 0
       ? 'Concave within range — still rising, with the marginal flattening toward saturation beyond +20%.'
       : 'Accelerating within range — marginal return rises with spend across the observed ±20% band.';
@@ -464,10 +509,7 @@ export default function ForecastResponse() {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div>
-        <div className="flex items-center gap-2.5 mb-1.5">
-          <span className="px-2 py-0.5 rounded bg-[#eef4ff] text-[#0f172a] font-semibold text-[10px] uppercase tracking-wider border border-[#dae2fd]">
-            Module M2
-          </span>
+        <div className="mb-1.5">
           <h2 className="text-2xl font-bold font-headline-lg text-[#0d1c2d] tracking-tight">Forecast &amp; Response</h2>
         </div>
         <p className="text-xs text-[#45464d] flex items-center gap-1.5 font-medium">
@@ -486,28 +528,74 @@ export default function ForecastResponse() {
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
         {/* Forecast band */}
         <div className="bg-white border border-[#e2e8f0] rounded-xl p-5 flex flex-col h-[440px] shadow-sm">
-          <div>
-            <h3 className="text-sm font-bold text-[#0d1c2d]">Revenue forecast — next 7 days</h3>
-            <p className="text-xs text-[#76777d] mt-1 leading-relaxed">
-              P50 bar with P10–P90 whisker per campaign. Band is{' '}
-              <span className="font-semibold text-[#0d1c2d]">mixed</span>: conformal-calibrated for XGBoost champions,
-              {nHeuristic > 0 ? ` operational ±20% heuristic for ${nHeuristic} baseline champion${nHeuristic > 1 ? 's' : ''}.` : ' all champions are XGBoost.'}
-            </p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-[#0d1c2d]">Revenue forecast — next 7 days</h3>
+              <p className="text-xs text-[#76777d] mt-1 leading-relaxed">
+                {forecastDim === 'channel' ? (
+                  <>
+                    P50 bar with P10–P90 whisker <span className="font-semibold text-[#0d1c2d]">per channel</span> (Google
+                    vs Meta). Channel band = sum of its campaigns&apos; bands (display approximation; quantiles don&apos;t add).
+                  </>
+                ) : (
+                  <>
+                    P50 bar with P10–P90 whisker per campaign. Band is{' '}
+                    <span className="font-semibold text-[#0d1c2d]">mixed</span>: conformal-calibrated for XGBoost champions,
+                    {nHeuristic > 0 ? ` operational ±20% heuristic for ${nHeuristic} baseline champion${nHeuristic > 1 ? 's' : ''}.` : ' all champions are XGBoost.'}
+                  </>
+                )}
+              </p>
+            </div>
+            <div className="flex shrink-0 rounded-lg border border-[#e2e8f0] overflow-hidden text-[11px] font-semibold">
+              <button
+                type="button"
+                onClick={() => setForecastDim('campaign')}
+                className={`px-2.5 py-1 transition-colors ${forecastDim === 'campaign' ? 'bg-[#0d1c2d] text-white' : 'bg-white text-[#45464d] hover:bg-[#f1f5f9]'}`}
+              >
+                Campaign
+              </button>
+              <button
+                type="button"
+                onClick={() => setForecastDim('channel')}
+                className={`px-2.5 py-1 border-l border-[#e2e8f0] transition-colors ${forecastDim === 'channel' ? 'bg-[#0d1c2d] text-white' : 'bg-white text-[#45464d] hover:bg-[#f1f5f9]'}`}
+              >
+                Channel
+              </button>
+            </div>
           </div>
-          <ForecastBandChart lines={rec.lines} selectedId={selected.campaign_id} onSelect={setSelectedId} />
+          <ForecastBandChart
+            lines={forecastBands}
+            selectedId={forecastDim === 'channel' ? '' : selected.campaign_id}
+            onSelect={forecastDim === 'channel' ? () => {} : setSelectedId}
+            neutral={forecastDim === 'channel'}
+          />
           <div className="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-[#e2e8f0]/40">
             <div className="flex items-center gap-4">
-              <span className="flex items-center gap-1.5 text-[10px] text-[#45464d] font-semibold">
-                <span className="w-3 h-3 rounded-sm bg-[#3bc6c2] inline-block" /> XGBoost P50
-              </span>
-              <span className="flex items-center gap-1.5 text-[10px] text-[#45464d] font-semibold">
-                <span className="w-3 h-3 rounded-sm bg-[#9aa6bd] inline-block" /> Baseline P50
-              </span>
-              <span className="flex items-center gap-1.5 text-[10px] text-[#45464d] font-semibold">
-                <span className="w-2.5 h-[2px] bg-[#131b2e] inline-block" /> P10–P90
-              </span>
+              {forecastDim === 'channel' ? (
+                <>
+                  <span className="flex items-center gap-1.5 text-[10px] text-[#45464d] font-semibold">
+                    <span className="w-3 h-3 rounded-sm bg-[#3bc6c2] inline-block" /> P50 forecast
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[10px] text-[#45464d] font-semibold">
+                    <span className="w-2.5 h-[2px] bg-[#131b2e] inline-block" /> P10–P90 band
+                  </span>
+                  <span className="text-[10px] text-[#76777d] italic">Campaign champions roll up to channel</span>
+                </>
+              ) : (
+                <>
+                  <span className="flex items-center gap-1.5 text-[10px] text-[#45464d] font-semibold">
+                    <span className="w-3 h-3 rounded-sm bg-[#3bc6c2] inline-block" /> XGBoost P50
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[10px] text-[#45464d] font-semibold">
+                    <span className="w-3 h-3 rounded-sm bg-[#9aa6bd] inline-block" /> Baseline P50
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[10px] text-[#45464d] font-semibold">
+                    <span className="w-2.5 h-[2px] bg-[#131b2e] inline-block" /> P10–P90
+                  </span>
+                </>
+              )}
             </div>
-            {ic?.n_calibration > 0 && (
+            {forecastDim !== 'channel' && ic?.n_calibration > 0 && (
               <span className="text-[10px] text-[#76777d]" title="Coverage is measured on the XGBoost conformal subset only; baseline ±20% bands are an uncalibrated operational heuristic.">
                 XGBoost conformal coverage {pct(ic.calibration_coverage_calibrated)} vs {pct(ic.target_coverage)} target
               </span>

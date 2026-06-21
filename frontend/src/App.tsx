@@ -9,14 +9,12 @@ import BudgetPlanner from './components/BudgetPlanner';
 import BuyerInventory from './components/BuyerInventory';
 import ModelEvidence from './components/ModelEvidence';
 import AuditControls from './components/AuditControls';
-import NewOptimizationModal from './components/NewOptimizationModal';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>(ActiveTab.Overview);
-  const [isOpenNewModal, setIsOpenNewModal] = useState(false);
 
   // Each workspace is self-contained: it reads/writes the live engine through
-  // RecommendationContext, so App only owns navigation + the optimization modal.
+  // RecommendationContext, so App only owns navigation.
   const renderActiveTabContent = () => {
     switch (activeTab) {
       case ActiveTab.Overview:
@@ -43,7 +41,6 @@ export default function App() {
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenNewOptimization={() => setIsOpenNewModal(true)}
       />
 
       <div className="flex-1 md:ml-64 flex flex-col min-h-screen">
@@ -55,15 +52,6 @@ export default function App() {
           </div>
         </main>
       </div>
-
-      <NewOptimizationModal
-        isOpen={isOpenNewModal}
-        onClose={() => setIsOpenNewModal(false)}
-        onApplied={() => {
-          setIsOpenNewModal(false);
-          setActiveTab(ActiveTab.Overview);
-        }}
-      />
     </div>
   );
 }

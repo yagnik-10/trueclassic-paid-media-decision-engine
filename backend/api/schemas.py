@@ -232,6 +232,15 @@ class Recommendation(BaseModel):
     interval_calibration: IntervalCalibration = Field(default_factory=IntervalCalibration)
 
 
+class NarrationResponse(BaseModel):
+    """Stage 5 bounded narrator output (FINAL_PLAN §8.2). Prose ONLY — the UI renders
+    every number from app state, never from this text. `source` distinguishes a live
+    LLM call ("llm") from the deterministic template fallback ("fallback")."""
+    text: str
+    source: Literal["llm", "fallback"]
+    model: str = ""
+
+
 class DecisionRequest(BaseModel):
     # The plan is identified by the scenario_id in the URL (an immutable stored
     # snapshot) — approval never re-solves the optimizer.

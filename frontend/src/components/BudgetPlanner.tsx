@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   Sliders,
   Filter,
@@ -12,6 +13,62 @@ import {
 import { useRecommendation } from '../state/RecommendationContext';
 import type { BindingItem, CampaignLine } from '../lib/api';
 import { PlatformLogo } from './BrandLogo';
+
+// Controlled number field that holds its own text while editing, so the user can
+// clear it (empty string) or type an intermediate value without the displayed
+// number snapping back to 0. It only commits a parsed number when one exists,
+// and re-syncs to the incoming `value` when not focused (e.g. Reset to defaults).
+function NumberInput({
+  value,
+  onCommit,
+  parse = parseFloat,
+  disabled,
+  className,
+  min,
+  max,
+  step,
+}: {
+  value: number;
+  onCommit: (n: number) => void;
+  parse?: (s: string) => number;
+  disabled?: boolean;
+  className?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+}) {
+  const [text, setText] = useState(String(value));
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (!editing) setText(String(value));
+  }, [value, editing]);
+
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      step={step}
+      disabled={disabled}
+      className={className}
+      value={text}
+      onFocus={() => setEditing(true)}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setText(raw);
+        if (raw === '') return; // allow the field to be empty mid-edit
+        const n = parse(raw);
+        if (!Number.isNaN(n)) onCommit(n);
+      }}
+      onBlur={(e) => {
+        setEditing(false);
+        const n = parse(e.target.value);
+        if (e.target.value === '' || Number.isNaN(n)) setText(String(value));
+      }}
+    />
+  );
+}
 
 const money = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
@@ -83,10 +140,7 @@ export default function BudgetPlanner() {
     <div className="space-y-6 animate-fade-in">
       <div className="flex justify-between items-end">
         <div>
-          <div className="flex items-center gap-2.5 mb-1.5">
-            <span className="px-2 py-0.5 rounded bg-[#eef4ff] text-[#0f172a] font-semibold text-[10px] uppercase tracking-wider border border-[#dae2fd]">
-              Module M3
-            </span>
+          <div className="mb-1.5">
             <h2 className="text-2xl font-bold font-headline-lg text-[#0d1c2d] tracking-tight">Constraints &amp; Allocation</h2>
           </div>
           <p className="text-xs text-[#45464d] flex items-center gap-1.5 font-medium">
@@ -163,8 +217,8 @@ export default function BudgetPlanner() {
             <div className="space-y-2">
               <label className="text-xs font-bold text-[#45464d] uppercase tracking-wider block">Calibrated ROAS floor</label>
               <div className="flex items-center gap-2">
-                <input type="number" min={1} max={10} step={0.1} value={cons.roas_floor} disabled={decided}
-                       onChange={(e) => updateDraft({ roas_floor: parseFloat(e.target.value) || 0 })}
+                <NumberInput min={1} max={10} step={0.1} value={cons.roas_floor} disabled={decided}
+                       onCommit={(n) => updateDraft({ roas_floor: n })}
                        className="w-full text-xs font-semibold bg-[#f8f9ff] border border-[#c6c6cd] rounded-lg px-3 py-1.5 font-data-mono text-[#0d1c2d] focus:outline-none focus:border-[#00714d] focus:bg-white disabled:opacity-60" />
                 <span className="text-xs font-bold text-[#45464d]">×</span>
               </div>
@@ -175,8 +229,9 @@ export default function BudgetPlanner() {
               <label className="text-xs font-bold text-[#45464d] uppercase tracking-wider block">NC-CPA Ceiling</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">$</span>
-                <input type="number" min={5} max={200} value={cons.nc_cpa_target} disabled={decided}
-                       onChange={(e) => updateDraft({ nc_cpa_target: parseInt(e.target.value) || 0 })}
+                <NumberInput min={5} max={200} value={cons.nc_cpa_target} disabled={decided}
+                       parse={(s) => parseInt(s, 10)}
+                       onCommit={(n) => updateDraft({ nc_cpa_target: n })}
                        className="w-full text-xs font-semibold bg-[#f8f9ff] border border-[#c6c6cd] rounded-lg pl-6 pr-3 py-1.5 font-data-mono text-[#0d1c2d] focus:outline-none focus:border-[#00714d] focus:bg-white disabled:opacity-60" />
               </div>
               <p className="text-[10px] text-[#76777d]">Maximum acceptable new-customer acquisition cost.</p>
@@ -185,8 +240,9 @@ export default function BudgetPlanner() {
             <div className="space-y-2">
               <label className="text-xs font-bold text-[#45464d] uppercase tracking-wider block">Min Prospecting Share</label>
               <div className="relative">
-                <input type="number" min={0} max={80} value={Math.round(cons.prospecting_min_share * 100)} disabled={decided}
-                       onChange={(e) => updateDraft({ prospecting_min_share: (parseInt(e.target.value) || 0) / 100 })}
+                <NumberInput min={0} max={80} value={Math.round(cons.prospecting_min_share * 100)} disabled={decided}
+                       parse={(s) => parseInt(s, 10)}
+                       onCommit={(n) => updateDraft({ prospecting_min_share: n / 100 })}
                        className="w-full text-xs font-semibold bg-[#f8f9ff] border border-[#c6c6cd] rounded-lg pl-3 pr-6 py-1.5 font-data-mono text-[#0d1c2d] focus:outline-none focus:border-[#00714d] focus:bg-white disabled:opacity-60" />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">%</span>
               </div>
@@ -197,8 +253,9 @@ export default function BudgetPlanner() {
               <label className="text-xs font-bold text-[#45464d] uppercase tracking-wider block">Max Campaign Movement</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">±</span>
-                <input type="number" min={5} max={40} value={Math.round(cons.movement_bound * 100)} disabled={decided}
-                       onChange={(e) => updateDraft({ movement_bound: (parseInt(e.target.value) || 0) / 100 })}
+                <NumberInput min={5} max={40} value={Math.round(cons.movement_bound * 100)} disabled={decided}
+                       parse={(s) => parseInt(s, 10)}
+                       onCommit={(n) => updateDraft({ movement_bound: n / 100 })}
                        className="w-full text-xs font-semibold bg-[#f8f9ff] border border-[#c6c6cd] rounded-lg pl-6 pr-6 py-1.5 font-data-mono text-[#0d1c2d] focus:outline-none focus:border-[#00714d] focus:bg-white disabled:opacity-60" />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-xs">%</span>
               </div>

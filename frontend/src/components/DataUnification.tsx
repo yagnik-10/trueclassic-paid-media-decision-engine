@@ -59,9 +59,10 @@ export default function DataUnification() {
   }, [refresh, decision?.row_hash]);
 
   const onApprove = async (item: SkuResolutionItem) => {
-    const candidate = item.allowed_candidates.includes(item.sku_id ?? '')
-      ? (item.sku_id as string)
-      : item.allowed_candidates[0];
+    // One-click approve only binds to a CONCRETE suggested match (resolved sku_id).
+    // We never auto-bind an unmapped/quarantined row to the nearest-string candidate.
+    const candidate =
+      item.sku_id && item.allowed_candidates.includes(item.sku_id) ? item.sku_id : null;
     if (!candidate) return;
     setApprovingId(item.platform_product_id);
     try {
@@ -246,9 +247,12 @@ export default function DataUnification() {
                   const isAuto = m.status === 'auto_matched';
                   const isNeeds = m.status === 'needs_approval';
                   const isQuarantined = m.status === 'quarantined';
-                  const candidate = m.allowed_candidates.includes(m.sku_id ?? '')
-                    ? m.sku_id
-                    : m.allowed_candidates[0];
+                  // Only a CONCRETE suggested match (resolved sku_id) is one-click
+                  // approvable. A quarantined / 0%-confidence row has no sku_id — its
+                  // nearest-string candidates are hints for manual review, not an
+                  // auto-bind target — so it never shows a confident "Approve → X".
+                  const candidate =
+                    m.sku_id && m.allowed_candidates.includes(m.sku_id) ? m.sku_id : null;
                   const canApprove = (isNeeds || isQuarantined) && !!candidate;
                   return (
                     <tr key={m.platform_product_id} className={`hover:bg-[#eef4ff]/30 transition-all ${isQuarantined ? 'bg-red-50/20' : ''}`}>
@@ -296,8 +300,17 @@ export default function DataUnification() {
                           <span className="inline-flex items-center gap-1 text-[#006c49] text-[11px] font-semibold">
                             <ShieldCheck size={13} /> recorded
                           </span>
-                        ) : isQuarantined ? (
-                          <span className="text-[11px] text-red-700">no candidate · manual</span>
+                        ) : isNeeds || isQuarantined ? (
+                          <span
+                            className="text-[11px] text-red-700 font-medium cursor-help"
+                            title={
+                              m.allowed_candidates.length > 0
+                                ? `No confident match. Nearest canonical SKUs (for manual review): ${m.allowed_candidates.join(', ')}`
+                                : 'No confident match — held for manual review.'
+                            }
+                          >
+                            Manual review
+                          </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 text-[#76777d] text-[11px]">
                             <CheckCircle size={12} /> auto

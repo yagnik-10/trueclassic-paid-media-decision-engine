@@ -8,12 +8,16 @@ see FINAL_PLAN §8).
 
 ## Tooling
 
-- **Claude Code** (Opus during development) — primary builder for Stage 0:
-  schema contracts, deterministic generator, defect catalog, tests, docs.
-- Deterministic Python (numpy/pandas/Pandera/Pydantic) does all the numerical
-  work. The runtime LLM (Stage 5, `claude-sonnet-4-6`) is bounded to ranking
-  allowed SKU candidates and narrating already-computed results — it never
-  computes, allocates, or executes, and every feature has a template fallback.
+- **Build-time AI: Claude Code / Cursor** (Claude Opus/Sonnet during development) —
+  primary builders: schema contracts, deterministic generator, defect catalog,
+  the engine/API, tests, and docs.
+- Deterministic Python (numpy/pandas/Pandera/Pydantic/SciPy/XGBoost) does **all**
+  numerical work. The **runtime narrator** (Stage 5) is a bounded LLM sidecar with
+  a deterministic template fallback: it never computes budgets, ranks, approves, or
+  executes — it only narrates an already-computed snapshot. The provider is chosen
+  from environment keys (OpenAI `OPENAI_API_KEY` tried first, then Anthropic
+  `ANTHROPIC_API_KEY`); **in this demo it is served by `gpt-4o-mini`**. If no key
+  is set or the call/grounding-check fails, the deterministic template is used.
 
 ## How Stage 0 was prompted & verified
 

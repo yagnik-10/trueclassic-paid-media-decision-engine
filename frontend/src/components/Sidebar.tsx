@@ -5,8 +5,7 @@ import {
   Coins, 
   Package,
   Microscope,
-  Gavel, 
-  Plus 
+  Gavel,
 } from 'lucide-react';
 import { ActiveTab } from '../types';
 import { TrueClassicWordmark } from './BrandLogo';
@@ -15,10 +14,9 @@ import { useRecommendation } from '../state/RecommendationContext';
 interface SidebarProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
-  onOpenNewOptimization: () => void;
 }
 
-export default function Sidebar({ activeTab, setActiveTab, onOpenNewOptimization }: SidebarProps) {
+export default function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
   const { rec, loading, solving, error } = useRecommendation();
 
   // Honest, live engine status — no fabricated "system health". Reflects the
@@ -75,8 +73,8 @@ export default function Sidebar({ activeTab, setActiveTab, onOpenNewOptimization
       <div className="p-6 border-b border-[#e2e8f0]/40">
         <div className="flex flex-col items-center gap-2">
           <TrueClassicWordmark className="h-5" />
-          <p className="text-[10px] text-[#00714d] font-bold tracking-[0.18em] uppercase">
-            Media Portfolio
+          <p className="text-[10px] text-[#00714d] font-bold tracking-[0.12em] uppercase text-center">
+            Media Decision &amp; Governance
           </p>
         </div>
       </div>
@@ -109,24 +107,13 @@ export default function Sidebar({ activeTab, setActiveTab, onOpenNewOptimization
       </nav>
 
       {/* Live engine status */}
-      <div className="px-5 py-2.5 border-t border-[#e2e8f0]/50">
+      <div className="px-5 py-3 border-t border-[#e2e8f0]/50 bg-[#f8f9ff]">
         <div className="flex items-center gap-2" title={status.label}>
           <span className={`w-2 h-2 rounded-full flex-shrink-0 ${status.dot}`} />
           <span className={`text-[10px] font-semibold font-data-mono truncate ${status.text}`}>
             {status.label}
           </span>
         </div>
-      </div>
-
-      {/* Primary Action Button */}
-      <div className="px-4 py-3 border-t border-[#e2e8f0]/50 space-y-3 bg-[#f8f9ff]">
-        <button
-          onClick={onOpenNewOptimization}
-          className="w-full bg-[#131b2e] hover:bg-[#233143] text-white text-xs font-semibold py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 hover:opacity-95 shadow-sm transition-all"
-        >
-          <Plus size={15} />
-          <span>New Optimization</span>
-        </button>
       </div>
     </aside>
   );

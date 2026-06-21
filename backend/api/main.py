@@ -6,12 +6,23 @@ import json
 import os
 from typing import Literal
 
+# Load a local .env (if present) so ANTHROPIC_API_KEY / LLM_MODEL and friends are
+# available to the API without an explicit shell export. Existing env vars win;
+# safe no-op if python-dotenv is missing. Must run before reading the environment.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except Exception:
+    pass
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api import ingestion_service, inventory_service, model_evidence_service
 from backend.api.calibration_service import registry as calibration_registry
 from backend.api.ingestion_service import SkuApprovalError
+from backend.api.llm import narrate as narrate_recommendation
 from backend.api.marts import MART_NAMES
 from backend.api.model_evidence_service import ReportNotFound
 from backend.api.recommendation import build_recommendation
@@ -25,6 +36,7 @@ from backend.api.schemas import (
     ExecutionPreview,
     IngestionSummary,
     ModelEvidenceResponse,
+    NarrationResponse,
     Recommendation,
     SkuApprovalRequest,
     SkuResolutionItem,
@@ -161,6 +173,21 @@ def get_execution_preview(scenario_id: str) -> ExecutionPreview:
             detail=f"unknown or evicted scenario {scenario_id}; recalculate before previewing",
         )
     return build_execution_preview(rec)
+
+
+@app.get("/api/recommendation/{scenario_id}/narration", response_model=NarrationResponse)
+def get_narration(scenario_id: str) -> NarrationResponse:
+    """Stage 5 — bounded LLM narration of a STORED snapshot (FINAL_PLAN §8.2). The
+    prose is explanatory only; the UI renders every figure from app state, not from
+    this text. Falls back to a deterministic template when no API key is configured or
+    the live call fails, so it never breaks the page."""
+    rec = snapshots.get(scenario_id)
+    if rec is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"unknown or evicted scenario {scenario_id}; recalculate before narrating",
+        )
+    return narrate_recommendation(rec)
 
 
 @app.get("/api/recommendation/{scenario_id}/audit", response_model=DecisionResponse)

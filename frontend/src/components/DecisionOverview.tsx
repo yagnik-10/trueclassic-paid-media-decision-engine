@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Info, AlertTriangle, AlertOctagon, Check, Loader2, Ban } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Info, AlertTriangle, AlertOctagon, Check, Loader2, Ban, Sparkles } from 'lucide-react';
 import { ActiveTab } from '../types';
 import { useRecommendation } from '../state/RecommendationContext';
-import type { CampaignLine } from '../lib/api';
+import type { CampaignLine, Narration } from '../lib/api';
+import { getNarration } from '../lib/api';
 import ExecutionPanel from './ExecutionPanel';
 import { PlatformLogo } from './BrandLogo';
 
@@ -12,6 +13,9 @@ interface DecisionOverviewProps {
 
 const money = (n: number) =>
   n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+
+// strip the "Google — " / "Meta — " platform prefix — the logo already conveys it
+const shortCampaign = (n: string) => n.replace(/^(Google|Meta)\s*[—–-]\s*/, '');
 
 // Group live campaign lines into the two allocation views — Meta + Google only.
 function groupBy(lines: CampaignLine[], mode: 'channel' | 'objective') {
@@ -39,9 +43,9 @@ function groupBy(lines: CampaignLine[], mode: 'channel' | 'objective') {
 
 function AllocationBars({ lines, mode }: { lines: CampaignLine[]; mode: 'channel' | 'objective' }) {
   const items = groupBy(lines, mode);
-  const max = Math.max(...items.map((i) => Math.max(i.current, i.recommended, i.cap)), 1) * 1.08;
+  const max = Math.max(...items.map((i) => Math.max(i.current, i.recommended, i.cap)), 1) * 1.05;
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
       {items.map((item) => {
         const curPct = (item.current / max) * 100;
         const recPct = (item.recommended / max) * 100;
@@ -49,34 +53,34 @@ function AllocationBars({ lines, mode }: { lines: CampaignLine[]; mode: 'channel
         const diff = item.recommended - item.current;
         const shrink = item.recommended < item.current;
         return (
-          <div key={item.name} className="space-y-2">
-            <div className="flex justify-between items-baseline font-sans">
-              <span className="text-[15px] font-bold text-[#0d1c2d] tracking-tight flex items-center gap-2">
-                {mode === 'channel' && <PlatformLogo platform={item.platform} className="w-[18px] h-[18px]" />}
-                {item.name}
-              </span>
-              <div className="flex items-center text-sm font-medium">
-                <span className="text-[#76777d] font-data-mono text-[14px]">{money(item.current)}</span>
-                <span className="text-[#a6a6ad] mx-2 text-[13px]">→</span>
-                <span className="text-[#0d1c2d] font-bold font-data-mono text-[14px]">{money(item.recommended)}</span>
-                <span className={`font-data-mono font-bold text-[14px] ml-3 ${diff >= 0 ? 'text-[#0ca68f]' : 'text-[#ea4335]'}`}>
+          <div key={item.name} className="space-y-3">
+            <div className="flex justify-between items-center font-sans">
+              <div className="flex items-center gap-2">
+                {mode === 'channel' && <PlatformLogo platform={item.platform} className="w-4 h-4 shrink-0" />}
+                <span className="text-sm font-semibold text-slate-800 tracking-tight">{item.name}</span>
+              </div>
+              <div className="flex items-center text-xs sm:text-sm font-medium">
+                <span className="text-slate-400 font-data-mono text-[13px]">{money(item.current)}</span>
+                <span className="text-slate-300 mx-2 text-[12px]">→</span>
+                <span className="text-[#0f172a] font-bold font-data-mono text-[13px]">{money(item.recommended)}</span>
+                <span className={`font-data-mono font-bold text-[13px] ml-3 ${diff >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                   {diff >= 0 ? '+' : '-'}{money(Math.abs(diff))}
                 </span>
               </div>
             </div>
-            <div className="relative w-full bg-[#f4f6f8] h-6 rounded-md overflow-hidden flex items-center border border-gray-100">
+            <div className="relative w-full bg-slate-50 h-5 rounded-md overflow-hidden flex items-center border border-slate-100">
               {shrink ? (
                 <>
-                  <div style={{ width: `${recPct}%` }} className="h-full bg-[#14b8a6] transition-all duration-300" />
-                  <div style={{ width: `${curPct - recPct}%` }} className="h-full bg-[#cbd5e1] transition-all duration-300" />
+                  <div style={{ width: `${recPct}%` }} className="h-full bg-slate-300 transition-all duration-300" />
+                  <div style={{ width: `${curPct - recPct}%` }} className="h-full bg-rose-200 transition-all duration-300" />
                 </>
               ) : (
                 <>
-                  <div style={{ width: `${curPct}%` }} className="h-full bg-[#14b8a6] transition-all duration-300" />
-                  <div style={{ width: `${recPct - curPct}%` }} className="h-full bg-[#5eead4] transition-all duration-300" />
+                  <div style={{ width: `${curPct}%` }} className="h-full bg-slate-300 transition-all duration-300" />
+                  <div style={{ width: `${recPct - curPct}%` }} className="h-full bg-emerald-500 transition-all duration-300" />
                 </>
               )}
-              <div style={{ left: `${capPct}%` }} className="absolute inset-y-0 w-0 border-r-2 border-dashed border-[#a6a6ad] z-10 pointer-events-none" />
+              <div style={{ left: `${capPct}%` }} className="absolute inset-y-0 w-0 border-r-2 border-dashed border-slate-400/70 z-10 pointer-events-none" />
             </div>
           </div>
         );
@@ -90,54 +94,44 @@ function AllocationBars({ lines, mode }: { lines: CampaignLine[]; mode: 'channel
 // campaigns are shown flat. This is the clearest read of the reallocation decision.
 function MovementBars({ lines }: { lines: CampaignLine[] }) {
   const rows = lines
-    .map((l) => ({ ...l, move: l.recommended_spend - l.current_spend }))
+    .map((l) => ({ ...l, move: Math.round(l.recommended_spend - l.current_spend) }))
     .sort((a, b) => b.move - a.move); // scale-ups on top, pull-backs at the bottom
   const maxAbs = Math.max(...rows.map((r) => Math.abs(r.move)), 1);
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-4 animate-fade-in">
       {rows.map((r) => {
-        const held = r.risk_flags.includes('inventory_no_scale') && Math.abs(r.move) < 1;
-        const up = r.move >= 0;
-        const pct = (Math.abs(r.move) / maxAbs) * 50; // max move fills half the track
+        const held = r.move === 0; // inventory-held / no-change campaigns round to $0/day
+        const up = r.move > 0;
+        const pct = (Math.abs(r.move) / maxAbs) * 46; // max move fills ~half the track
         return (
-          <div key={r.campaign_id} className="flex items-center gap-3">
-            <span className="w-48 shrink-0 truncate text-right text-[15px] font-sans font-bold tracking-tight text-[#0d1c2d]" title={r.campaign_name}>
-              {r.campaign_name}
-            </span>
-            <div className="relative flex-1 h-6 rounded-md bg-[#f4f6f8] border border-gray-100 overflow-hidden">
-              <div className="absolute inset-y-0 left-1/2 w-px bg-[#c6c6cd] z-10" />
-              {!held && up && (
-                <div className="absolute inset-y-1 left-1/2 rounded-r bg-[#0ca68f] transition-all duration-300" style={{ width: `${pct}%` }} />
+          <div key={r.campaign_id} className="grid grid-cols-12 gap-3 items-center font-sans">
+            <div className="col-span-4 flex items-center gap-2 min-w-0 pr-1" title={r.campaign_name}>
+              <PlatformLogo platform={r.platform} className="w-4 h-4 shrink-0" />
+              <span className="text-xs font-semibold text-slate-700 truncate tracking-tight">{shortCampaign(r.campaign_name)}</span>
+            </div>
+            <div className="col-span-6 relative bg-slate-50 h-5 rounded-md border border-slate-100 flex items-center overflow-hidden">
+              <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-200 z-10 pointer-events-none" />
+              {up && (
+                <div className="absolute h-full bg-emerald-500 rounded-r transition-all duration-300" style={{ left: '50%', width: `${pct}%` }} />
               )}
-              {!held && !up && (
-                <div className="absolute inset-y-1 rounded-l bg-[#ea4335] transition-all duration-300" style={{ right: '50%', width: `${pct}%` }} />
+              {r.move < 0 && (
+                <div className="absolute h-full bg-rose-500 rounded-l transition-all duration-300" style={{ left: `${50 - pct}%`, width: `${pct}%` }} />
               )}
             </div>
-            <span className={`w-24 shrink-0 text-right font-data-mono text-[14px] font-bold ${held ? 'text-[#a6a6ad]' : up ? 'text-[#0ca68f]' : 'text-[#ea4335]'}`}>
-              {held ? 'held' : `${up ? '+' : '−'}${money(Math.abs(r.move))}`}
-            </span>
+            <div className="col-span-2 text-right">
+              {held ? (
+                <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-50 text-slate-400 font-data-mono text-[10px] font-bold border border-slate-100 uppercase tracking-wider">
+                  held
+                </span>
+              ) : (
+                <span className={`font-data-mono font-bold text-xs sm:text-[13px] ${up ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {up ? '+' : '-'}{money(Math.abs(r.move))}
+                </span>
+              )}
+            </div>
           </div>
         );
       })}
-      <p className="pt-1 text-[11px] font-sans text-[#76777d]">
-        Dollars moved per day · center line = no change · green = scale up · red = pull back · inventory-held campaigns are not increased.
-      </p>
-    </div>
-  );
-}
-
-function Kpi({ label, value, sub, tone, primary, info }: {
-  label: string; value: string; sub?: string; tone?: 'up' | 'down' | 'flat'; primary?: boolean; info?: string;
-}) {
-  const toneColor = tone === 'up' ? 'text-[#006c49]' : tone === 'down' ? 'text-[#ea4335]' : 'text-[#76777d]';
-  return (
-    <div className={`bg-white border rounded-xl p-4 shadow-sm relative overflow-hidden transition-all hover:border-[#00714d]/40 ${primary ? 'border-[#00714d]/50 ring-1 ring-[#00714d]/10' : 'border-[#e2e8f0]'}`}>
-      <div className="text-[#45464d] text-xs font-semibold uppercase tracking-wider mb-2 flex justify-between items-center gap-1">
-        <span>{label}</span>
-        {info && <Info size={13} className="text-[#76777d] shrink-0" aria-label={info} />}
-      </div>
-      <div className="text-xl font-bold font-data-mono text-[#0d1c2d] leading-tight tracking-tight">{value}</div>
-      {sub && <div className={`text-[11px] mt-1 font-medium font-data-mono ${toneColor}`}>{sub}</div>}
     </div>
   );
 }
@@ -166,10 +160,83 @@ function Guardrail({ label, detail, status }: { label: string; detail: string; s
   );
 }
 
+// A large headline metric card: greyed current → bold recommended, with a green pill.
+function BigMetric({ label, info, current, recommended, pill }: {
+  label: string; info: string; current: string; recommended: string; pill: string;
+}) {
+  return (
+    <div className="bg-white border border-[#cbd5e1]/50 rounded-xl p-5 shadow-sm hover:shadow-md transition-all relative">
+      <div className="flex justify-between items-start">
+        <span className="text-xs font-bold text-[#475569] tracking-wider uppercase">{label}</span>
+        <span title={info} className="cursor-help"><Info size={14} className="text-[#94a3b8] hover:text-[#475569] transition-colors" /></span>
+      </div>
+      <div className="mt-3 flex items-baseline flex-wrap">
+        <span className="text-3xl font-bold font-headline-lg text-slate-400 mr-2">{current}</span>
+        <span className="text-xl font-normal text-slate-400 mx-1">→</span>
+        <span className="text-3xl font-extrabold font-headline-lg text-[#0f172a] ml-1">{recommended}</span>
+      </div>
+      <div className="mt-2.5">
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#f0fdf4] text-[#006c49] font-data-mono text-xs font-semibold border border-[#dcfce7]">
+          {pill}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// A compact context card: greyed current → bold recommended (or a single value) + caption.
+function ContextCard({ label, current, recommended, sub }: {
+  label: string; current?: string; recommended: string; sub: string;
+}) {
+  return (
+    <div className="bg-white border border-[#cbd5e1]/45 rounded-xl p-4 shadow-sm relative">
+      <span className="text-[10px] font-bold text-[#475569] tracking-wider uppercase block mb-1">{label}</span>
+      <div className="text-sm font-semibold font-data-mono mt-2">
+        {current && <><span className="text-slate-400">{current}</span> <span className="text-slate-400 font-normal">→</span> </>}
+        <span className="text-[#0f172a] font-bold">{recommended}</span>
+      </div>
+      <div className="text-[10px] text-[#475569] font-data-mono mt-1 font-medium">{sub}</div>
+    </div>
+  );
+}
+
+// Section header for a scorecard group, with an optional dimmed descriptor.
+function GroupLabel({ title, desc }: { title: string; desc?: string }) {
+  return (
+    <div className="text-[10px] sm:text-xs font-bold text-[#64748b] tracking-wider uppercase">
+      {title}{desc && <span className="font-normal text-slate-400"> — {desc}</span>}
+    </div>
+  );
+}
+
 export default function DecisionOverview({ onNavigateToTab }: DecisionOverviewProps) {
   const { rec, decision, loading, solving, error, decided, busy, dirty, approveBlockedReason, decide } =
     useRecommendation();
   const [mode, setMode] = useState<'movement' | 'channel' | 'objective'>('movement');
+
+  // Stage 5 bounded narrator: fetch a prose explanation for the active snapshot. The
+  // numbers below always render from app state; this only replaces the summary prose.
+  // Re-fetches whenever the scenario (constraints) changes; degrades silently.
+  const [narration, setNarration] = useState<Narration | null>(null);
+  const [narrationLoading, setNarrationLoading] = useState(false);
+  const scenarioId = rec?.scenario_id;
+  useEffect(() => {
+    if (!scenarioId) {
+      setNarration(null);
+      setNarrationLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setNarration(null);
+    setNarrationLoading(true);
+    getNarration(scenarioId)
+      .then((n) => !cancelled && setNarration(n))
+      .catch(() => !cancelled && setNarration(null))
+      .finally(() => !cancelled && setNarrationLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [scenarioId]);
 
   if (loading) {
     return (
@@ -260,45 +327,39 @@ export default function DecisionOverview({ onNavigateToTab }: DecisionOverviewPr
         </div>
       )}
 
-      {/* Success-criteria scorecard — ranked: primary outcome → policy guardrails → context */}
-      <div className="space-y-4">
-        {/* Tier 1 — the brief's required success metric (blended ROAS ≥ floor) plus the
-            objective the engine maximizes under it (net contribution). */}
-        <div>
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#45464d] mb-2">
-            Primary success metric &amp; outcome <span className="text-[#76777d] font-medium normal-case tracking-normal">— the required KPI and the objective maximized under it</span>
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Kpi primary label="Calibrated Blended ROAS"
-                 value={`${k.blended_roas_current.toFixed(2)}× → ${k.blended_roas_projected.toFixed(2)}×`}
-                 tone={k.blended_roas_projected >= rec.constraints.roas_floor ? 'up' : 'down'}
-                 sub={k.blended_roas_projected >= rec.constraints.roas_floor
-                   ? `clears ${rec.constraints.roas_floor.toFixed(1)}× required floor (+${(k.blended_roas_projected - rec.constraints.roas_floor).toFixed(2)}×)`
-                   : `below ${rec.constraints.roas_floor.toFixed(1)}× required floor (${(k.blended_roas_projected - rec.constraints.roas_floor).toFixed(2)}×)`}
-                 info="The brief's required success metric — calibrated blended ROAS vs the 4.0× floor" />
-            <Kpi primary label="Net contribution / day" value={`${money(k.net_contribution_current)} → ${money(k.net_contribution_projected)}`}
-                 tone={netDelta >= 0 ? 'up' : 'down'}
-                 sub={`${netDelta >= 0 ? '+' : ''}${money(netDelta)}/day${k.net_contribution_current > 0 ? ` (${netDelta >= 0 ? '+' : ''}${netPct.toFixed(1)}%)` : ''} · the objective the engine maximizes`} />
+      {/* Success-criteria scorecard — template-styled groups (primary → economics → guardrails → context) */}
+      <div className="space-y-5">
+        {/* Group 1 — required KPI + the objective maximized under it */}
+        <div className="space-y-3">
+          <GroupLabel title="Primary success metric & outcome" desc="the required KPI and the objective maximized under it" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <BigMetric label="Calibrated Blended ROAS"
+              info="The brief's required success metric — calibrated blended ROAS vs the required floor"
+              current={`${k.blended_roas_current.toFixed(2)}×`} recommended={`${k.blended_roas_projected.toFixed(2)}×`}
+              pill={k.blended_roas_projected >= rec.constraints.roas_floor
+                ? `clears ${rec.constraints.roas_floor.toFixed(1)}× required floor (+${(k.blended_roas_projected - rec.constraints.roas_floor).toFixed(2)}×)`
+                : `below ${rec.constraints.roas_floor.toFixed(1)}× required floor (${(k.blended_roas_projected - rec.constraints.roas_floor).toFixed(2)}×)`} />
+            <BigMetric label="Net Contribution / Day"
+              info="Projected incremental daily contribution margin — the objective the engine maximizes"
+              current={money(k.net_contribution_current)} recommended={money(k.net_contribution_projected)}
+              pill={`${netDelta >= 0 ? '+' : ''}${money(netDelta)}/day${k.net_contribution_current > 0 ? ` (${netDelta >= 0 ? '+' : ''}${netPct.toFixed(1)}%)` : ''} · the objective the engine maximizes`} />
           </div>
         </div>
 
-        {/* Contribution economics — the optimization lens beneath the headline ROAS (D-041). */}
-        <div>
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#45464d] mb-2">
-            Contribution economics <span className="text-[#76777d] font-medium normal-case tracking-normal">— the optimization lens beneath the headline ROAS</span>
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Kpi label="CM ROAS" value={`${k.cm_roas_current.toFixed(2)}× → ${k.cm_roas_projected.toFixed(2)}×`}
-                 tone={cmDelta >= 0 ? 'up' : 'down'} sub={`${cmDelta >= 0 ? '+' : ''}${cmDelta.toFixed(2)}× · contribution margin per ad $, breaks even at 1.0×`}
-                 info="Contribution margin per ad $ — the lens the optimizer actually maximizes; breaks even at 1.0×" />
+        {/* Group 2 — contribution economics */}
+        <div className="space-y-3">
+          <GroupLabel title="Contribution economics" desc="the optimization lens beneath the headline ROAS" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <BigMetric label="CM ROAS"
+              info="Contribution margin per ad $ — the lens the optimizer actually maximizes; breaks even at 1.0×"
+              current={`${k.cm_roas_current.toFixed(2)}×`} recommended={`${k.cm_roas_projected.toFixed(2)}×`}
+              pill={`${cmDelta >= 0 ? '+' : ''}${cmDelta.toFixed(2)}× · contribution margin per ad $, breaks even at 1.0×`} />
           </div>
         </div>
 
-        {/* Tier 2 — policy guardrails that must hold (actual vs threshold, from the solver) */}
-        <div>
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#45464d] mb-2">
-            Policy guardrails <span className="text-[#76777d] font-medium normal-case tracking-normal">— constraints the plan must satisfy</span>
-          </h3>
+        {/* Group 3 — policy guardrails (actual vs threshold, from the solver) */}
+        <div className="space-y-3">
+          <GroupLabel title="Policy guardrails" desc="constraints the plan must satisfy" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Guardrail label="Calibrated ROAS floor" detail={roasDetail} status={roasG?.status ?? 'slack'} />
             <Guardrail label="NC-CPA ceiling" detail={cpaDetail} status={cpaG?.status ?? 'slack'} />
@@ -306,47 +367,53 @@ export default function DecisionOverview({ onNavigateToTab }: DecisionOverviewPr
           </div>
         </div>
 
-        {/* Tier 3 — supporting context (spend level, attribution gap, reserve) */}
-        <div>
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#45464d] mb-2">Context</h3>
+        {/* Group 4 — supporting context */}
+        <div className="space-y-3">
+          <GroupLabel title="Context" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Kpi label="Daily spend" value={`${money(k.total_current_spend)} → ${money(k.total_recommended_spend)}`}
-                 sub="equal-or-lower spend" />
-            <Kpi label="Reported ROAS" value={`${k.reported_roas_current.toFixed(2)}× → ${k.reported_roas_projected.toFixed(2)}×`}
-                 sub="platform-reported · context" info="Over-attribution gap vs calibrated" />
-            <Kpi label={`Reserve (${rec.constraints.reserve_mode === 'efficiency_first' ? 'efficiency-first' : 'growth'})`}
-                 value={money(k.reserve)} tone={k.reserve > 0 ? 'up' : 'flat'}
-                 sub={k.reserve > 0 ? 'withheld below hurdle' : 'full deployment'} />
+            <ContextCard label="Daily Spend" current={money(k.total_current_spend)} recommended={money(k.total_recommended_spend)}
+              sub={k.total_recommended_spend <= k.total_current_spend + 1 ? 'equal-or-lower spend' : 'optimized investment profile'} />
+            <ContextCard label="Reported ROAS" current={`${k.reported_roas_current.toFixed(2)}×`} recommended={`${k.reported_roas_projected.toFixed(2)}×`}
+              sub="platform-reported · context" />
+            <ContextCard label={`Reserve (${rec.constraints.reserve_mode === 'efficiency_first' ? 'efficiency-first' : 'growth'})`}
+              recommended={money(k.reserve)} sub={k.reserve > 0 ? 'withheld below hurdle' : 'fully deployed'} />
           </div>
         </div>
       </div>
 
       {/* Chart + side panel */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white border border-[#e2e8f0] rounded-xl p-6 shadow-sm flex flex-col">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
+        <div className="lg:col-span-2 bg-white border border-[#cbd5e1]/50 rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 select-none border-b border-slate-100 pb-4">
             <div>
-              <h3 className="text-lg font-bold text-[#0d1c2d] tracking-tight">Current vs recommended allocation</h3>
-              <p className="text-xs text-[#76777d] mt-0.5">{mode === 'movement' ? 'Per campaign · dollars moved per day' : mode === 'channel' ? 'By platform · daily spend' : 'By objective · daily spend'}</p>
+              <span className="text-xs font-bold text-[#475569] tracking-wider uppercase block">Current vs Recommended Allocation</span>
+              <span className="text-[10px] text-[#64748b] font-mono mt-1 block uppercase font-medium">
+                {mode === 'movement' ? 'Per campaign · dollars moved per day' : mode === 'channel' ? 'By platform · daily spend' : 'By objective · daily spend'}
+              </span>
             </div>
-            <div className="flex bg-[#eef4ff] p-0.5 rounded-lg border border-[#c6c6cd]/40">
+            <div className="flex bg-slate-100/80 p-0.5 rounded-lg border border-slate-200">
               {(['movement', 'channel', 'objective'] as const).map((m) => (
                 <button key={m} onClick={() => setMode(m)}
-                        className={`px-3 py-1 text-xs font-semibold rounded-md transition-all duration-150 ${mode === m ? 'bg-white text-[#0d1c2d] shadow-sm' : 'text-[#45464d] hover:text-[#0d1c2d]'}`}>
-                  {m === 'movement' ? 'By Movement' : m === 'channel' ? 'By Channel' : 'By Objective'}
+                        className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all duration-150 uppercase tracking-wider ${mode === m ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-900'}`}>
+                  {m}
                 </button>
               ))}
             </div>
           </div>
-          <div className="flex-1 flex flex-col justify-between pt-2 pb-2">
+          <div className="flex-1 flex flex-col justify-between pt-1 pb-1">
             {mode === 'movement'
               ? <MovementBars lines={rec.lines} />
               : <AllocationBars lines={rec.lines} mode={mode} />}
-            {mode !== 'movement' && (
-              <div className="flex justify-start items-center gap-6 mt-6 pt-4 border-t border-[#e2e8f0]/60 text-[10px] sm:text-xs font-bold text-[#76777d] uppercase tracking-widest">
-                <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#cbd5e1] inline-block" /><span>Current</span></div>
-                <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-[#14b8a6] inline-block" /><span>Recommended</span></div>
-                <div className="flex items-center gap-1.5"><span className="w-0.5 h-3 border-l-2 border-dashed border-[#a6a6ad] inline-block" /><span>Daily Cap</span></div>
+            {mode === 'movement' ? (
+              <p className="text-[10px] sm:text-[11px] text-[#64748b] mt-6 pt-4 border-t border-slate-100 select-none leading-relaxed font-mono">
+                DOLLARS MOVED PER DAY · CENTER LINE = NO CHANGE · <span className="text-emerald-600 font-bold uppercase">scale up</span> · <span className="text-rose-500 font-bold uppercase">pull back</span> · INVENTORY-HELD CAMPAIGNS ARE NOT INCREASED.
+              </p>
+            ) : (
+              <div className="flex flex-wrap justify-start items-center gap-x-6 gap-y-2 mt-6 pt-4 border-t border-slate-100 select-none text-[10px] sm:text-xs font-bold text-[#64748b] uppercase tracking-widest font-sans">
+                <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-300 inline-block" /><span>Current / Retained</span></div>
+                <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /><span>Recommended Scale Up</span></div>
+                <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-rose-200 inline-block" /><span>Recommended Cut Back</span></div>
+                <div className="flex items-center gap-1.5"><span className="w-0.5 h-3 border-l-2 border-dashed border-slate-400 inline-block" /><span>Daily Cap Space</span></div>
               </div>
             )}
           </div>
@@ -355,8 +422,23 @@ export default function DecisionOverview({ onNavigateToTab }: DecisionOverviewPr
         {/* Side panel: recommendation + approve + constraints */}
         <div className="flex flex-col gap-6">
           <div className="bg-[#131b2e] text-white rounded-xl p-6 shadow-sm flex flex-col gap-4">
-            <span className="text-xs uppercase tracking-wider font-semibold text-[#dae2fd]">Engine Recommendation</span>
-            <p className="text-sm leading-relaxed text-[#dae2fd]">{summary}</p>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs uppercase tracking-wider font-semibold text-[#dae2fd]">Engine Recommendation</span>
+              {narration?.source === 'llm' && (
+                <span title={`Narrated by ${narration.model}. Numbers are computed deterministically; the LLM only explains them.`}
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/10 text-[#c7d6f5] text-[10px] font-semibold tracking-wide">
+                  <Sparkles size={10} /> AI narration
+                </span>
+              )}
+            </div>
+            {narrationLoading ? (
+              <div className="flex items-center gap-2 text-sm text-[#9fb4d8] py-1">
+                <Loader2 size={14} className="animate-spin text-[#9fb4d8]" />
+                <span>Generating narration…</span>
+              </div>
+            ) : (
+              <p className="text-sm leading-relaxed text-[#dae2fd]">{narration?.text ?? summary}</p>
+            )}
             {approveBlockedReason && !decided && (
               <p className="text-[11px] text-[#fcd34d]">{approveBlockedReason}</p>
             )}

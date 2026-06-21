@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import {
-  Microscope,
   Loader2,
   AlertTriangle,
   CheckCircle,
@@ -261,8 +260,8 @@ export default function ModelEvidence() {
       {/* Module title + provenance badges */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4">
         <div>
-          <h2 className="text-2xl font-bold font-headline-lg text-[#0d1c2d] tracking-tight flex items-center gap-2">
-            <Microscope size={22} className="text-[#00714d]" /> Model Evidence
+          <h2 className="text-2xl font-bold font-headline-lg text-[#0d1c2d] tracking-tight">
+            Model Evidence
           </h2>
           <p className="text-sm text-[#45464d] mt-1 max-w-3xl">
             How each campaign's forecast champion was chosen — and how it held up on the untouched test.
