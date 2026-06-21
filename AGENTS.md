@@ -52,9 +52,10 @@ unintentionally.
 
 ## Stage map
 Stage 0 (done): schemas + deterministic generator + defects + invariants.
-Stage 1 (done): FastAPI thin shell (`backend/api/`) + Next.js page (`frontend/`) —
-one FIXED recommendation + stubbed approve/reject audit. Run with `make api` +
-`make web`.
+Stage 1 (done): FastAPI thin shell (`backend/api/`) + Vite/React web UI
+(`frontend/`) — one FIXED recommendation + stubbed approve/reject audit. Run
+with `make api` + `make web`. (The original Next.js shell was retired — see
+`docs/DECISIONS.md` D-043.)
 Stage 2 (done): real ingestion (`backend/decision_engine/ingestion/`).
 Stage 3 (done): real engine (`backend/decision_engine/engine/`) — XGBoost quantile
 BAU forecast + baselines, orthogonalized (double-ML) residualized response, SciPy

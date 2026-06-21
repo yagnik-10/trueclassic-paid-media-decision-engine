@@ -74,6 +74,9 @@ def build_recommendation(policy_mode: str = "expected",
             incrementality=ln.incrementality,
             calibrated_roas_current=ln.calibrated_roas_current,
             platform_roas_current=ln.platform_roas_current,
+            contribution_margin_rate=ln.contribution_margin_rate,
+            marginal_cm_roas=ln.marginal_cm_roas,
+            marginal_cm_roas_downside=ln.marginal_cm_roas_downside,
         ))
     kpis = Kpis(
         cm_roas_current=eng.cm_roas_current,
@@ -100,6 +103,7 @@ def build_recommendation(policy_mode: str = "expected",
         is_fixed_placeholder=False, engine="slsqp_optimizer",
         feasible=eng.feasible, conflicts=eng.conflicts,
         marginal_scale_floor=eng.marginal_scale_floor, level_anchor=eng.level_anchor,
+        marginal_cm_hurdle=eng.marginal_cm_hurdle, cm_break_even=eng.cm_break_even,
         constraints=cp,
         lines=lines, kpis=kpis,
         # eng.binding is {"portfolio": [...], "per_campaign": [...]} of plain dicts;

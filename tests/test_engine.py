@@ -8,7 +8,11 @@ from __future__ import annotations
 
 import pytest
 
-from backend.decision_engine.config import BLENDED_ROAS_FLOOR, PROSPECTING_MIN_SHARE
+from backend.decision_engine.config import (
+    BLENDED_ROAS_FLOOR,
+    HARD_FLOOR_SAFETY,
+    PROSPECTING_MIN_SHARE,
+)
 from backend.decision_engine.engine.recommend import build_engine_recommendation
 
 _PROSPECTING = {"META_PROSPECTING", "META_ADV_SHOPPING"}
@@ -54,6 +58,28 @@ def test_marginal_ordering_recovered(rec):
     nb = _line(rec, "GOOGLE_NONBRAND").marginal_roas
     assert nb > _line(rec, "META_RETARGETING").marginal_roas
     assert nb > _line(rec, "GOOGLE_BRAND").marginal_roas
+
+
+# --- CM-unit marginal economics (D-041 primary lens) ------------------------
+# CM units rescale the calibrated-ROAS marginal by each campaign's SKU margin so the
+# decision threshold is a single safety multiple, no matter the margin spread. The UI
+# renders these verbatim — the conversion lives here, not in React.
+def test_marginal_cm_roas_is_margin_times_gross(rec):
+    for ln in rec.lines:
+        assert ln.marginal_cm_roas == pytest.approx(
+            ln.contribution_margin_rate * ln.marginal_roas, abs=5e-3)
+        assert ln.marginal_cm_roas_downside == pytest.approx(
+            ln.contribution_margin_rate * ln.marginal_roas_downside, abs=5e-3)
+
+
+def test_cm_thresholds_are_derived_constants(rec):
+    # the hurdle is the config safety knob (NOT a hardcoded 1.05) and break-even is 1.0×
+    assert rec.marginal_cm_hurdle == pytest.approx(HARD_FLOOR_SAFETY, abs=1e-9)
+    assert rec.cm_break_even == pytest.approx(1.0, abs=1e-9)
+    # per campaign, margin × gross-ROAS hurdle collapses to that single safety multiple
+    for ln in rec.lines:
+        assert ln.contribution_margin_rate * ln.marginal_hurdle == pytest.approx(
+            rec.marginal_cm_hurdle, abs=5e-3)
 
 
 # --- constraints hold --------------------------------------------------------

@@ -13,7 +13,9 @@ before changing code.
 - Build as a **vertical slice that stays runnable**. One stage at a time; do not
   build the whole system in one pass.
 - **Meta + Google only** in the committed implementation. No Amazon / Microsoft.
-- Stack is **Next.js + FastAPI**. No Streamlit substitute.
+- Stack is **Vite + React (TypeScript) + FastAPI**. No Streamlit substitute. The
+ web UI lives in `frontend/`; the original Stage-1 Next.js shell was retired
+ (see `docs/DECISIONS.md` D-043).
 - No Prophet, no full MMM, no autonomous runtime orchestration, no real OAuth,
   no live media writes.
 - **All numerical decisions are deterministic.** The LLM may only rank allowed
@@ -58,7 +60,7 @@ before changing code.
 
 ## Stage status
 Stages 0–3 are complete: Stage 0 (schemas, generator, defects, invariants),
-Stage 1 (FastAPI thin shell + Next.js page + stubbed approve/reject audit),
+Stage 1 (FastAPI thin shell + web UI + stubbed approve/reject audit),
 Stage 2 (real ingestion: adapters, validation/quarantine, SKU resolution, DQ
 detection), Stage 3 (real engine in `backend/decision_engine/engine/` — XGBoost
 quantile BAU forecast + baselines, orthogonalized/double-ML residualized response,

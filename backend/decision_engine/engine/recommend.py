@@ -150,6 +150,15 @@ class RecLine:
     incrementality: float = 1.0
     calibrated_roas_current: float = 0.0
     platform_roas_current: float = 0.0
+    # CM (contribution-margin) marginal economics — the PRIMARY decision lens (D-041).
+    # CM units rescale the calibrated-ROAS marginal by this campaign's SKU margin, so
+    # break-even is exactly 1.0× and the hurdle is a single safety multiple
+    # (HARD_FLOOR_SAFETY) for EVERY campaign, regardless of margin spread:
+    #     marginal_cm_roas   = contribution_margin_rate × marginal_roas
+    #     marginal_cm_hurdle = margin × marginal_hurdle = HARD_FLOOR_SAFETY  (rec-level)
+    contribution_margin_rate: float = 0.0
+    marginal_cm_roas: float = 0.0
+    marginal_cm_roas_downside: float = 0.0
 
 
 @dataclass
@@ -173,6 +182,10 @@ class EngineRecommendation:
     reserve: float
     nc_cpa_projected: float
     marginal_scale_floor: float = 0.0   # economically-derived hard floor (for charts)
+    # CM-unit decision thresholds (constant across campaigns — D-041 primary lens). The
+    # hurdle is the config safety knob (HARD_FLOOR_SAFETY), NOT a hardcoded number.
+    marginal_cm_hurdle: float = 0.0     # = HARD_FLOOR_SAFETY (CM units; break-even×safety)
+    cm_break_even: float = 1.0          # CM ROAS break-even (contribution exactly covers spend)
     data_fingerprint: str = ""          # fingerprint of the actual modeling panel
     engine_version: str = ENGINE_VERSION
     config_fingerprint: str = ""        # live config fingerprint (set in build)
@@ -391,7 +404,7 @@ def build_engine_recommendation(policy_mode: str = "expected",
         meta[cid] = {"current_spend": r.current_spend, "name": str(ctx.dim_c.loc[cid, "campaign_name"]),
                      "is_prospecting": bool(ctx.dim_c.loc[cid, "is_prospecting"]),
                      "platform": str(ctx.dim_c.loc[cid, "platform"]),
-                     "inventory": inventory, "floor": camp_floor,
+                     "inventory": inventory, "floor": camp_floor, "margin": margin,
                      "daily_cap": float(ctx.dim_c.loc[cid, "daily_cap"])}
 
     # Conservative: pessimistic (downside) response AND smaller, cautious steps
@@ -452,6 +465,7 @@ def build_engine_recommendation(policy_mode: str = "expected",
             strategically_required=strategically_required)
         incr = float(ctx.calibration[r.segment])
         cal_roas = r.current_revenue / r.current_spend if r.current_spend else 0.0
+        margin = m["margin"]   # this campaign's SKU contribution-margin rate
         lines.append(RecLine(
             campaign_id=cid, campaign_name=m["name"], platform=m["platform"], segment=r.segment,
             current_spend=round(r.current_spend, 2), recommended_spend=round(rec, 2),
@@ -467,6 +481,9 @@ def build_engine_recommendation(policy_mode: str = "expected",
             incrementality=round(incr, 4),
             calibrated_roas_current=round(cal_roas, 3),
             platform_roas_current=round(cal_roas / incr, 3) if incr else 0.0,
+            contribution_margin_rate=round(margin, 4),
+            marginal_cm_roas=round(margin * r.marginal_roas, 4),
+            marginal_cm_roas_downside=round(margin * r.marginal_roas_downside, 4),
         ))
 
     return EngineRecommendation(
@@ -484,6 +501,7 @@ def build_engine_recommendation(policy_mode: str = "expected",
         total_recommended_spend=round(sum(result.spend.values()), 2),
         reserve=result.reserve, nc_cpa_projected=result.nc_cpa,
         marginal_scale_floor=round(ctx.portfolio_floor, 3),
+        marginal_cm_hurdle=round(engine_config().hard_floor_safety, 4), cm_break_even=1.0,
         data_fingerprint=base_data_fingerprint, engine_version=ENGINE_VERSION,
         config_fingerprint=config_fingerprint(),
         effective_movement_bound=round(movement, 4), reserve_mode=cons.reserve_mode,

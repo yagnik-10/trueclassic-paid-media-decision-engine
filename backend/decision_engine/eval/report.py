@@ -11,11 +11,17 @@ import platform
 from importlib.metadata import version
 from pathlib import Path
 
+from backend.decision_engine import config as C
 from backend.decision_engine.config import BLENDED_ROAS_FLOOR, MASTER_SEED, REPO_ROOT
 from backend.decision_engine.engine.data import load_engine_inputs
-from backend.decision_engine.engine.recommend import ENGINE_VERSION, build_engine_recommendation
+from backend.decision_engine.engine.recommend import (
+    ENGINE_VERSION,
+    build_engine_recommendation,
+    engine_provenance,
+)
 from backend.decision_engine.eval import harness as H
 from backend.decision_engine.eval import plots as P
+from backend.decision_engine.eval.provenance import REPORT_VERSION, evidence_input_fingerprint
 from backend.decision_engine.ingestion.pipeline import run_ingestion
 from backend.decision_engine.synth.fingerprint import canonical_tables_fingerprint
 from backend.decision_engine.synth.generator import generate
@@ -25,6 +31,7 @@ _DEPS = ("numpy", "pandas", "scipy", "scikit-learn", "xgboost", "matplotlib")
 
 
 def _provenance() -> dict:
+    prov = engine_provenance()
     return {
         "data_fingerprint": canonical_tables_fingerprint(generate().tables),
         "engine_version": ENGINE_VERSION,
@@ -32,6 +39,15 @@ def _provenance() -> dict:
         "python": platform.python_version(),
         "dependencies": {d: version(d) for d in _DEPS},
         "command": "make model-report",
+        # --- modeling-input identity (rec-comparable; feeds the evidence fingerprint) ---
+        "dataset_profile": C.DATASET_PROFILE,
+        "report_version": REPORT_VERSION,
+        # the PANEL data fingerprint the recommendation/ledger carry (NOT the canonical
+        # headline above — the two are different hashes of the same profile by design).
+        "panel_data_fingerprint": prov["data_fingerprint"],
+        "config_fingerprint": prov["config_fingerprint"],
+        "calibration_fingerprint": prov["calibration_fingerprint"],
+        "evidence_input_fingerprint": evidence_input_fingerprint(),
         "note": "Synthetic-data validation. Latent marginals are available only "
                 "because the data generator is known; these are NOT real-world "
                 "performance figures and imply no causal identification.",
@@ -253,12 +269,38 @@ def run(out_dir: Path = OUT_DIR) -> dict:
     report["interpretation"] = _interpret(report)
 
     plot_files = P.generate_plots(report, test_frame, plots_dir, recommendation)
-    report["artifacts"] = {"plots_dir": "plots", "plots": plot_files}
+    # Persist the tidy per-row TEST predictions (the same frame the PNGs draw from) so the
+    # Model Evidence UI can render interactive actual-vs-predicted / forecast-fan charts
+    # without re-training. These are HOLDOUT actuals + the DEPLOYED band — no latent
+    # generator truth, so exposing them carries no target-leakage risk. Deterministic.
+    pred_rows = _write_test_predictions(test_frame, out_dir / "test_predictions.csv")
+    report["artifacts"] = {"plots_dir": "plots", "plots": plot_files,
+                           "test_predictions": "test_predictions.csv",
+                           "test_prediction_rows": pred_rows}
 
     _write_json(report, out_dir / "metrics.json")
     _write_csv(report, out_dir / "per_campaign_point_metrics.csv")
     _write_markdown(report, out_dir / "REPORT.md")
     return report
+
+
+# Row-level test-prediction columns exposed to the evidence layer. Deliberately the
+# evaluation fields only (actual, deployed band, residual) — NO latent marginals.
+_PRED_COLS = ("cid", "date", "t", "dow", "spend", "y", "pred", "residual",
+              "p10", "p50", "p90", "p10_raw", "p90_raw", "model")
+
+
+def _write_test_predictions(test_frame, path: Path) -> int:
+    """Write the tidy per-row test frame as a stable CSV; return the row count. Empty
+    frame → header-only file (the evidence endpoint then reports no series)."""
+    if test_frame is None or test_frame.empty:
+        path.write_text(",".join(_PRED_COLS) + "\n")
+        return 0
+    df = test_frame.copy()
+    df["date"] = df["date"].map(lambda d: str(getattr(d, "date", lambda: d)()))
+    df = df[list(_PRED_COLS)].sort_values(["cid", "t"]).reset_index(drop=True)
+    df.to_csv(path, index=False)
+    return int(len(df))
 
 
 def _write_json(report: dict, path: Path) -> None:

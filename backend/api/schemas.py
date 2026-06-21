@@ -61,6 +61,12 @@ class CampaignLine(BaseModel):
     incrementality: float = 1.0
     calibrated_roas_current: float = 0.0
     platform_roas_current: float = 0.0
+    # CM (contribution-margin) marginal economics — PRIMARY decision lens (D-041).
+    # marginal_cm_roas = contribution_margin_rate × marginal_roas; break-even at 1.0×,
+    # hurdle = HARD_FLOOR_SAFETY (rec-level) for every campaign.
+    contribution_margin_rate: float = 0.0
+    marginal_cm_roas: float = 0.0
+    marginal_cm_roas_downside: float = 0.0
 
 
 class Kpis(BaseModel):
@@ -203,6 +209,10 @@ class Recommendation(BaseModel):
     # inventory, marginal floor — are enforced directly and so never appear here.)
     conflicts: list[str] = Field(default_factory=list)
     marginal_scale_floor: float = 0.0
+    # CM-unit decision thresholds (constant across campaigns — D-041). The hurdle is the
+    # config safety knob (HARD_FLOOR_SAFETY), not a hardcoded number; break-even = 1.0×.
+    marginal_cm_hurdle: float = 0.0
+    cm_break_even: float = 1.0
     # How the per-campaign revenue LEVEL is anchored: the selected BAU forecast's
     # forward-horizon P50 ÷ horizon (an average daily level). So Model A feeds the
     # optimizer; per-line forecast_model + forecast_p50 expose the source.
@@ -238,6 +248,39 @@ class ExecutionEvent(BaseModel):
     status: str
     is_stub: bool
     created_at: str
+
+
+class ExecutionPayloadChange(BaseModel):
+    """One stubbed set-budget call line (what WOULD be pushed to the platform)."""
+    campaign_id: str
+    campaign_name: str
+    platform: str
+    current_spend: float
+    new_daily_budget: float
+    delta_pct: float
+
+
+class ExecutionPlatformPayload(BaseModel):
+    """The per-platform batch payload. `payload_hash` is over the CANONICAL change list
+    only, so a previewed hash is byte-identical to the committed ExecutionEvent hash."""
+    event_id: str
+    platform: str
+    payload_hash: str
+    is_stub: bool = True
+    changes: list[ExecutionPayloadChange]
+
+
+class ExecutionPreview(BaseModel):
+    """Pre-approval preview of the stubbed execution payloads. Pure function of the stored
+    snapshot — it records nothing and triggers no live write."""
+    scenario_id: str
+    is_stub: bool = True
+    status: str = "preview_no_live_write"
+    note: str
+    total_changes: int
+    held_flat: list[str] = Field(default_factory=list)        # unchanged campaigns (not pushed)
+    inventory_blocked: list[str] = Field(default_factory=list)  # changed-but-suppressed (inventory)
+    payloads: list[ExecutionPlatformPayload] = Field(default_factory=list)
 
 
 class AuditChainStatus(BaseModel):
@@ -312,5 +355,126 @@ class DecisionResponse(BaseModel):
     notes: Optional[str] = None
     execution_events: list[ExecutionEvent]
     idempotent_replay: bool = False
+    # Append-only hash-chain links (Stage 4.4) — tamper-evidence for the audit ledger.
+    ledger_seq: int = 0
+    prev_hash: str = ""
+    row_hash: str = ""
     # NOTE: a durable, append-only, multi-entry audit history is Stage 4. This is
     # the single decision record for the Stage 1 thin shell.
+
+
+# --- Buyer & Inventory (thin guardrail beat — FINAL_PLAN §9) -----------------
+class BuyerCampaignLink(BaseModel):
+    """A media campaign that sells this SKU (so a stockout caps its scale)."""
+    campaign_id: str
+    campaign_name: str
+    platform: str
+
+
+class BuyerInventoryItem(BaseModel):
+    sku_id: str
+    product_name: str
+    units_on_hand: int
+    forecast_daily_demand: float          # units/day (from Shopify DTC orders)
+    days_of_cover: float                  # units_on_hand / forecast_daily_demand
+    lead_time_days: int
+    safety_days: int
+    stockout_risk: bool                   # days_of_cover < lead_time + safety
+    no_scale: bool                        # engine pins linked campaigns (== stockout_risk)
+    estimated_stockout_date: str          # snapshot_date + floor(days_of_cover) days
+    # order-up-to to cover (lead_time + safety) days of demand; ASSUMES incoming = 0.
+    reorder_qty: int
+    reorder_assumption: str
+    urgency: Literal["urgent", "reorder_soon", "monitor"]
+    linked_campaigns: list[BuyerCampaignLink] = Field(default_factory=list)
+
+
+class BuyerInventoryResponse(BaseModel):
+    snapshot_date: str
+    reorder_policy: str                   # human-readable policy + assumption
+    items: list[BuyerInventoryItem]
+
+
+# --- Model Evidence (curated, versioned view over the model report) ----------
+class EvidenceProvenance(BaseModel):
+    dataset_profile: str
+    engine_version: str
+    report_version: str
+    data_fingerprint: str                 # canonical-tables headline (mart reconciliation)
+    panel_data_fingerprint: str           # modeling-panel id the recommendation carries
+    config_fingerprint: str
+    calibration_fingerprint: str
+    evidence_input_fingerprint: str       # comparable identity (no timestamp)
+    master_seed: int
+    note: str
+
+
+class ChampionPreTest(BaseModel):
+    """Pre-test SELECTION evidence (frozen folds). Only two bars are persisted: the
+    XGBoost candidate and the BEST baseline — per-baseline pre-test WAPE is not stored."""
+    xgb_wape: float
+    best_baseline_wape: float
+    improvement_pct: float
+    fold_wins: int
+    n_folds: int
+    threshold: float
+    reason: str
+
+
+class ModelTestPoint(BaseModel):
+    model: str                            # xgboost_p50 | baseline_trailing_14d | baseline_same_weekday
+    wape: Optional[float] = None
+    mae: Optional[float] = None
+    bias_me: Optional[float] = None
+
+
+class ForecastSeriesPoint(BaseModel):
+    """One row of the UNTOUCHED-test forecast for a campaign: the holdout actual vs the
+    DEPLOYED-band champion forecast (P50 == the selected model's point). No latent truth."""
+    date: str
+    actual: float                         # realized 7-day-forward revenue (holdout label)
+    pred: float                           # selected champion point forecast (== p50)
+    p10: float                            # deployed band: conformal (XGBoost) or ±20% (baseline)
+    p50: float
+    p90: float
+    residual: float                       # pred - actual
+    covered: bool                         # actual within [p10, p90]
+
+
+class ChampionCampaign(BaseModel):
+    campaign_id: str
+    selected_model: str                   # the frozen-selector champion
+    is_xgb_champion: bool
+    pretest: Optional[ChampionPreTest] = None     # absent for baseline-champion campaigns
+    test_points: list[ModelTestPoint]             # all three models on the UNTOUCHED test
+    champion_test_wape: Optional[float] = None
+    best_baseline_test_wape: Optional[float] = None
+    holdout_drift: bool = False           # champion regressed >25% vs best baseline on test
+    drift_pct_worse: Optional[float] = None
+    # row-level untouched-test series for the interactive charts (forecast-vs-actual over
+    # time + actual-vs-predicted). Empty when the report predates the artifact.
+    test_series: list[ForecastSeriesPoint] = Field(default_factory=list)
+    test_coverage: Optional[float] = None         # share of series rows inside the deployed band
+
+
+class EvidenceSummary(BaseModel):
+    overall_test_wape: Optional[float] = None
+    approx_point_accuracy_pct: Optional[float] = None
+    xgb_materially_beats_baseline_in: list[str] = Field(default_factory=list)
+    fallback_campaigns: list[str] = Field(default_factory=list)
+    champion_holdout_drift_campaigns: list[str] = Field(default_factory=list)
+    safe_for_model_demo: bool = False
+    safe_for_decision_demo: bool = False
+
+
+class ModelEvidenceResponse(BaseModel):
+    schema_version: str                   # curated-contract version (NOT the raw metrics.json)
+    report_version: str
+    generated_at: str                     # report file mtime (ISO) — when it was produced
+    stale: bool                           # evidence identity != active recommendation identity
+    stale_reason: Optional[str] = None
+    active_evidence_input_fingerprint: str   # live recompute, for transparency
+    series_available: bool = False           # row-level test predictions present (Phase D)
+    provenance: EvidenceProvenance
+    summary: EvidenceSummary
+    campaigns: list[ChampionCampaign]

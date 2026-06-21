@@ -91,6 +91,39 @@ def test_approve_records_snapshot_and_stub_execution(client):
     assert all("PMAX" not in e["event_id"] for e in body["execution_events"])  # inventory-blocked
 
 
+def test_execution_preview_matches_committed_events(client):
+    # the pre-approval preview must be byte-identical (event_id + payload_hash) to what
+    # approval commits to the ledger — the operator verifies what they approve.
+    scn = _scenario(client)["scenario_id"]
+    preview = client.get(f"/api/recommendation/{scn}/execution-preview").json()
+    assert preview["is_stub"] and preview["status"] == "preview_no_live_write"
+    assert preview["payloads"] and preview["total_changes"] > 0
+    # preview records nothing — the scenario stays pending until an explicit decision
+    assert _scenario(client)["status"] == "pending"
+    committed = client.post(f"/api/recommendation/{scn}/decision",
+                            json={"action": "approve", "approver": "m"}).json()["execution_events"]
+    assert [(p["event_id"], p["payload_hash"]) for p in preview["payloads"]] == \
+           [(e["event_id"], e["payload_hash"]) for e in committed]
+
+
+def test_execution_preview_unknown_scenario_404(client):
+    assert client.get("/api/recommendation/SCN-nope/execution-preview").status_code == 404
+
+
+def test_decision_exposes_hash_chain_links(client):
+    # the ledger row's chain links must be surfaced for the audit view, and the audit
+    # log + verify endpoint must agree on the same head hash.
+    scn = _scenario(client)["scenario_id"]
+    d = client.post(f"/api/recommendation/{scn}/decision",
+                    json={"action": "approve", "approver": "m"}).json()
+    assert d["ledger_seq"] >= 1
+    assert len(d["row_hash"]) == 64 and len(d["prev_hash"]) == 64
+    log = client.get("/api/audit/log").json()
+    assert log[-1]["row_hash"] == d["row_hash"]              # newest ledger row == this decision
+    verify = client.get("/api/audit/verify").json()
+    assert verify["ok"] and verify["head_hash"] == d["row_hash"]
+
+
 def test_reject_records_no_execution(client):
     scn = _scenario(client)["scenario_id"]
     body = client.post(f"/api/recommendation/{scn}/decision",
@@ -473,3 +506,27 @@ def test_approve_auto_matched_is_rejected(client):
     r = client.post("/api/sku-resolution/FB_TC-CREW-BLK/approve",
                     json={"sku_id": "TC-CREW-BLK", "approver": "m"})
     assert r.status_code == 400
+
+
+def test_admin_reset_clears_ledger_and_sku_approvals(client):
+    # approve a plan + an SKU mapping so there is state to clear
+    rec = _scenario(client)
+    sid = rec["scenario_id"]
+    assert client.post(f"/api/recommendation/{sid}/decision",
+                       json={"action": "approve", "approver": "m"}).status_code == 200
+    client.post("/api/sku-resolution/GG_TC-JOG-BLU/approve",
+                json={"sku_id": "TC-JOG-BLK", "approver": "m"})
+    assert len(client.get("/api/audit/log").json()) == 1
+
+    out = client.post("/api/admin/reset").json()
+    assert out["ok"] is True and out["decisions_cleared"] == 1
+
+    # ledger is empty, the scenario reads pending again, and the chain is valid
+    assert client.get("/api/audit/log").json() == []
+    assert client.get("/api/audit/verify").json()["count"] == 0
+    assert _scenario(client)["status"] == "pending"
+    assert "approved" not in client.get("/api/ingestion").json()["sku_resolution_summary"]
+    # a fresh approval works after reset (new chain from genesis)
+    sid2 = _scenario(client)["scenario_id"]
+    assert client.post(f"/api/recommendation/{sid2}/decision",
+                       json={"action": "approve", "approver": "m"}).status_code == 200

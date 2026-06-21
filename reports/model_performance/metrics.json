@@ -10,7 +10,9 @@
       "07_optimizer_sensitivity.png",
       "08_allocation_recommendation.png"
     ],
-    "plots_dir": "plots"
+    "plots_dir": "plots",
+    "test_prediction_rows": 235,
+    "test_predictions": "test_predictions.csv"
   },
   "correctness": {
     "chronological_splits": true,
@@ -1081,8 +1083,11 @@
     ]
   },
   "provenance": {
+    "calibration_fingerprint": "ec6729d77443c890",
     "command": "make model-report",
+    "config_fingerprint": "62336454841dec3e",
     "data_fingerprint": "7ebbdf0b9e835a47d28318155c611275eadad3dc3b5ea8450f67f98498950b2b",
+    "dataset_profile": "realistic",
     "dependencies": {
       "matplotlib": "3.11.0",
       "numpy": "2.4.6",
@@ -1092,9 +1097,12 @@
       "xgboost": "3.3.0"
     },
     "engine_version": "stage3.5",
+    "evidence_input_fingerprint": "8f984b5049c4a8ef",
     "master_seed": 20240117,
     "note": "Synthetic-data validation. Latent marginals are available only because the data generator is known; these are NOT real-world performance figures and imply no causal identification.",
-    "python": "3.13.11"
+    "panel_data_fingerprint": "9b5120157a274c2fae3f5ea7b82b292bf00a3c2504109cc9c66e5e83d25c3d39",
+    "python": "3.13.11",
+    "report_version": "report.v1"
   },
   "response": {
     "overall": {

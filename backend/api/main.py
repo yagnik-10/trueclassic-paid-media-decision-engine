@@ -9,18 +9,22 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import ingestion_service
+from backend.api import ingestion_service, inventory_service, model_evidence_service
 from backend.api.calibration_service import registry as calibration_registry
 from backend.api.ingestion_service import SkuApprovalError
 from backend.api.marts import MART_NAMES
+from backend.api.model_evidence_service import ReportNotFound
 from backend.api.recommendation import build_recommendation
 from backend.api.schemas import (
     AuditChainStatus,
+    BuyerInventoryResponse,
     CalibrationRegistryResponse,
     ConstraintParams,
     DecisionRequest,
     DecisionResponse,
+    ExecutionPreview,
     IngestionSummary,
+    ModelEvidenceResponse,
     Recommendation,
     SkuApprovalRequest,
     SkuResolutionItem,
@@ -30,6 +34,7 @@ from backend.api.store import (
     DecisionConflict,
     DurableDecisionStore,
     SnapshotStore,
+    build_execution_preview,
 )
 from backend.decision_engine.calibration.registry import apply_overrides, calibration_map
 from backend.decision_engine.config import (
@@ -46,10 +51,12 @@ app = FastAPI(
     version="0.3.0",
 )
 
-# The Next.js dev server runs on :3000.
+# The Vite/React web UI dev server runs on :3000 (pinned); :3001 is allowed as a
+# fallback for running a second instance alongside the default.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000",
+                   "http://localhost:3001", "http://127.0.0.1:3001"],
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -90,6 +97,23 @@ def get_calibration_registry() -> CalibrationRegistryResponse:
     return calibration_registry()
 
 
+@app.get("/api/inventory", response_model=BuyerInventoryResponse)
+def get_inventory() -> BuyerInventoryResponse:
+    # Thin Buyer & Inventory beat: read-only inventory snapshot + reorder suggestion,
+    # joined to the campaigns each SKU sells (no_scale matches the engine's pins).
+    return inventory_service.buyer_inventory()
+
+
+@app.get("/api/model-evidence", response_model=ModelEvidenceResponse)
+def get_model_evidence() -> ModelEvidenceResponse:
+    # Curated, versioned view over the model report (latent-truth stripped) with a
+    # fresh/stale verdict vs the active recommendation's modeling identity.
+    try:
+        return model_evidence_service.model_evidence()
+    except ReportNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.post("/api/sku-resolution/{platform_product_id}/approve",
           response_model=SkuResolutionItem)
 def approve_sku(platform_product_id: str, body: SkuApprovalRequest) -> SkuResolutionItem:
@@ -126,6 +150,19 @@ def get_recommendation(
     return snap.model_copy(update={"status": store.status(snap.scenario_id)})
 
 
+@app.get("/api/recommendation/{scenario_id}/execution-preview", response_model=ExecutionPreview)
+def get_execution_preview(scenario_id: str) -> ExecutionPreview:
+    # Read-only preview of the stubbed set-budget payloads approval WOULD commit. Pure
+    # function of the stored snapshot — records nothing, triggers no live write.
+    rec = snapshots.get(scenario_id)
+    if rec is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"unknown or evicted scenario {scenario_id}; recalculate before previewing",
+        )
+    return build_execution_preview(rec)
+
+
 @app.get("/api/recommendation/{scenario_id}/audit", response_model=DecisionResponse)
 def get_audit(scenario_id: str) -> DecisionResponse:
     decision = store.get(scenario_id)
@@ -157,6 +194,18 @@ def get_mart(name: str) -> list[dict]:
     if name not in MART_NAMES:
         raise HTTPException(status_code=404, detail=f"unknown mart {name}; expected {MART_NAMES}")
     return store.mart(name)
+
+
+@app.post("/api/admin/reset")
+def reset_demo_state() -> dict:
+    """DEMO/admin reset: clear the durable decision ledger AND the in-memory SKU
+    approvals, returning the whole app to a fresh, pending state. This is explicitly
+    NOT an 'un-approve' of a single governed decision (those are immutable) — it wipes
+    the prototype's session so the flow can be demoed again from scratch. A production
+    deploy would remove or strongly gate this endpoint."""
+    cleared = store.reset()
+    ingestion_service.reset_approvals()
+    return {"ok": True, "decisions_cleared": cleared}
 
 
 @app.post("/api/recommendation/{scenario_id}/decision", response_model=DecisionResponse)

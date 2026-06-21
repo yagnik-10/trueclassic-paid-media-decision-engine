@@ -20,14 +20,8 @@ data/raw/*
 data/internal/
 
 # Realistic profile (D-034): regenerate with `make generate-realistic`. Its
-# fingerprint is pinned in tests; the bytes are reproducible so not committed —
-# only the dir placeholders are tracked (symmetric to golden). The latent
-# internal/ truth is NEVER committed.
-data/realistic/canonical/*
-data/realistic/raw/*
-data/realistic/internal/
-!data/realistic/canonical/.gitkeep
-!data/realistic/raw/.gitkeep
+# fingerprint is pinned in tests; the bytes are reproducible so not committed.
+data/realistic/
 
 # Durable append-only audit store (Stage 4.4) — runtime decision log (sqlite)
 data/audit/
@@ -35,9 +29,13 @@ data/audit/
 # Model-performance report (reproducible via `make model-report`) — tracked so the
 # plots/metrics are visible in the editor and reviewable in git.
 
-# Node / frontend (Stage 1)
+# Node / web UI (frontend/, Vite + React)
 node_modules/
-.next/
+frontend/dist/
+.vite/
 
 # OS
 .DS_Store
+
+# Confidential: the original company exercise brief — never publish
+TrueClassic_AIExercise_PaidMedia_v2.docx

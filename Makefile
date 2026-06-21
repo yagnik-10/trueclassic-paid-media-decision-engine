@@ -1,5 +1,5 @@
 # True Classic Paid Media Decision Engine
-# Python 3.13 venv (pinned deps) for the engine; Node for the Next.js shell.
+# Python 3.13 venv (pinned deps) for the engine; Node (Vite + React) for the web UI.
 
 PYTHON ?= python3.13
 VENV   := .venv
@@ -27,8 +27,8 @@ help:
 	@echo "make lint-report- ruff check (non-enforcing report)"
 	@echo "make verify-clean-install - build a throwaway venv from the lock and run tests"
 	@echo "make api        - run the FastAPI backend (http://$(API_HOST):$(API_PORT))"
-	@echo "make web-setup  - install frontend (Next.js) dependencies"
-	@echo "make web        - run the Next.js dev server (http://localhost:3000)"
+	@echo "make web-setup  - install web UI (Vite + React) dependencies"
+	@echo "make web        - run the Vite dev server (http://localhost:3000)"
 	@echo "make clean      - remove generated data and caches"
 
 # Reproducible install: exact locked versions that produce the pinned fingerprint.
@@ -92,12 +92,15 @@ cm-sweep:
 marts:
 	$(PY) scripts/build_marts.py
 
-# --- Stage 1 thin shell: FastAPI backend + Next.js frontend ----------------
+# --- Web UI: FastAPI backend + Vite/React SPA (frontend/) ---------------
+# The web client lives in frontend/ (Vite + React 19 + Tailwind v4). It is a
+# read-and-govern client over the API; see docs/DECISIONS.md D-043 for the
+# migration off the original Stage-1 Next.js shell.
 api:
 	$(BIN)/uvicorn backend.api.main:app --reload --host $(API_HOST) --port $(API_PORT)
 
 web-setup:
-	cd frontend && npm ci
+	cd frontend && npm install
 
 web:
 	cd frontend && npm run dev

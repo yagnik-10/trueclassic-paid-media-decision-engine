@@ -28,6 +28,9 @@ from backend.api.schemas import (
     ConstraintParams,
     DecisionResponse,
     ExecutionEvent,
+    ExecutionPayloadChange,
+    ExecutionPlatformPayload,
+    ExecutionPreview,
     Recommendation,
 )
 from backend.decision_engine.config import DATA_DIR
@@ -105,18 +108,27 @@ class _Decision:
     decided_at: str
     notes: str | None
     execution_events: list[ExecutionEvent] = field(default_factory=list)
+    # Hash-chain links — populated on append/read, surfaced for the audit ledger view.
+    ledger_seq: int = 0
+    prev_hash: str = ""
+    row_hash: str = ""
 
 
-def _stub_execution_events(rec: Recommendation) -> list[ExecutionEvent]:
-    """One stubbed execution payload per platform with a changed, non-blocked line."""
+def _canonical_platform_payloads(
+    rec: Recommendation,
+) -> list[tuple[str, list[CampaignLine], str]]:
+    """(platform, changed_lines, payload_hash) per platform — the deterministic stubbed
+    set-budget calls. Only changed, non-inventory-blocked lines are pushed. The hash is
+    over the CANONICAL {campaign_id, new_daily_budget} list, so a PREVIEWED hash is
+    byte-identical to the hash later COMMITTED to the audit ledger."""
     changed: dict[str, list[CampaignLine]] = {}
     for line in rec.lines:
         if line.recommended_spend != line.current_spend and "inventory_no_scale" not in line.risk_flags:
             changed.setdefault(line.platform, []).append(line)
 
-    events: list[ExecutionEvent] = []
-    for i, (platform, lines) in enumerate(sorted(changed.items()), start=1):
-        payload = {
+    out: list[tuple[str, list[CampaignLine], str]] = []
+    for platform, lines in sorted(changed.items()):
+        canonical = {
             "platform": platform,
             "changes": [
                 {"campaign_id": ln.campaign_id, "new_daily_budget": ln.recommended_spend}
@@ -124,16 +136,66 @@ def _stub_execution_events(rec: Recommendation) -> list[ExecutionEvent]:
             ],
         }
         payload_hash = hashlib.sha256(
-            json.dumps(payload, sort_keys=True).encode("utf-8")
+            json.dumps(canonical, sort_keys=True).encode("utf-8")
         ).hexdigest()
-        events.append(
-            ExecutionEvent(
+        out.append((platform, lines, payload_hash))
+    return out
+
+
+def _stub_execution_events(rec: Recommendation) -> list[ExecutionEvent]:
+    """One stubbed execution event per platform with a changed, non-blocked line."""
+    return [
+        ExecutionEvent(
+            event_id=f"EXEC-{rec.scenario_id}-{i:02d}",
+            rec_id=rec.rec_id, platform=platform, payload_hash=payload_hash,
+            status="stubbed_no_live_write", is_stub=True, created_at=_now(),
+        )
+        for i, (platform, _lines, payload_hash) in enumerate(
+            _canonical_platform_payloads(rec), start=1
+        )
+    ]
+
+
+def build_execution_preview(rec: Recommendation) -> ExecutionPreview:
+    """Pre-approval preview of the stubbed payloads — pure, records nothing. The per-
+    platform `event_id` and `payload_hash` match exactly what approval commits, so the
+    operator can verify the previewed plan is what lands in the ledger."""
+    payloads: list[ExecutionPlatformPayload] = []
+    total = 0
+    for i, (platform, lines, payload_hash) in enumerate(
+        _canonical_platform_payloads(rec), start=1
+    ):
+        changes = [
+            ExecutionPayloadChange(
+                campaign_id=ln.campaign_id, campaign_name=ln.campaign_name,
+                platform=ln.platform, current_spend=ln.current_spend,
+                new_daily_budget=ln.recommended_spend, delta_pct=ln.delta_pct,
+            )
+            for ln in lines
+        ]
+        total += len(changes)
+        payloads.append(
+            ExecutionPlatformPayload(
                 event_id=f"EXEC-{rec.scenario_id}-{i:02d}",
-                rec_id=rec.rec_id, platform=platform, payload_hash=payload_hash,
-                status="stubbed_no_live_write", is_stub=True, created_at=_now(),
+                platform=platform, payload_hash=payload_hash, is_stub=True, changes=changes,
             )
         )
-    return events
+    held_flat = [
+        ln.campaign_name for ln in rec.lines if ln.recommended_spend == ln.current_spend
+    ]
+    inventory_blocked = [
+        ln.campaign_name for ln in rec.lines
+        if ln.recommended_spend != ln.current_spend and "inventory_no_scale" in ln.risk_flags
+    ]
+    note = (
+        "Stubbed set-budget calls that WOULD be sent to Meta/Google on approval. No live "
+        "writes occur — this is a decision & governance layer. Each payload hash is "
+        "byte-identical to the hash committed to the append-only audit ledger."
+    )
+    return ExecutionPreview(
+        scenario_id=rec.scenario_id, total_changes=total, held_flat=held_flat,
+        inventory_blocked=inventory_blocked, payloads=payloads, note=note,
+    )
 
 
 def _decision_to_response(d: _Decision, idempotent: bool = False) -> DecisionResponse:
@@ -148,6 +210,7 @@ def _decision_to_response(d: _Decision, idempotent: bool = False) -> DecisionRes
         action=d.action, previous_status="pending", new_status=d.status,
         status=d.status, approver=d.approver, decided_at=d.decided_at, notes=d.notes,
         execution_events=list(d.execution_events), idempotent_replay=idempotent,
+        ledger_seq=d.ledger_seq, prev_hash=d.prev_hash, row_hash=d.row_hash,
     )
 
 
@@ -266,6 +329,7 @@ class DurableDecisionStore:
             decided_at=row["decided_at"], notes=row["notes"],
             execution_events=[ExecutionEvent(**e)
                               for e in json.loads(row["execution_events_json"])],
+            ledger_seq=row["seq"], prev_hash=row["prev_hash"], row_hash=row["row_hash"],
         )
 
     def get(self, scenario_id: str) -> DecisionResponse | None:
@@ -295,9 +359,12 @@ class DurableDecisionStore:
 
     def _append(self, d: _Decision) -> None:
         last = self._conn.execute(
-            "SELECT row_hash FROM decisions ORDER BY seq DESC LIMIT 1").fetchone()
+            "SELECT seq, row_hash FROM decisions ORDER BY seq DESC LIMIT 1").fetchone()
         prev_hash = last["row_hash"] if last is not None else _GENESIS_HASH
         row_hash = _chain_hash(prev_hash, _row_payload(d))
+        # surface the chain links on the just-committed decision (audit ledger view)
+        d.prev_hash, d.row_hash = prev_hash, row_hash
+        d.ledger_seq = (last["seq"] + 1) if last is not None else 1
         self._conn.execute(
             """INSERT INTO decisions (
                 scenario_id, rec_id, policy, constraints_json, allocation_json,
@@ -312,6 +379,23 @@ class DurableDecisionStore:
              d.action, d.status, d.approver, d.decided_at, d.notes,
              json.dumps([e.model_dump() for e in d.execution_events]), prev_hash, row_hash))
         self._conn.commit()
+
+    def reset(self) -> int:
+        """DEMO/admin reset: wipe the entire ledger and start a fresh hash chain.
+
+        This is intentionally OUTSIDE the governed decision flow — terminal decisions
+        are otherwise immutable (the DROP below clears the append-only triggers with
+        the table, then the schema is recreated). It exists so the prototype can be
+        re-run from a clean slate; a production deploy would gate or remove it. Returns
+        the number of decisions that were cleared."""
+        with self._lock:
+            cleared = self._conn.execute("SELECT COUNT(*) AS n FROM decisions").fetchone()["n"]
+            # dropping the table also drops its append-only triggers; recreate fresh
+            self._conn.execute("DROP TABLE IF EXISTS decisions")
+            self._conn.executescript(_AUDIT_SCHEMA)
+            create_marts(self._conn)
+            self._conn.commit()
+            return int(cleared)
 
     def all_decisions(self) -> list[DecisionResponse]:
         """The full ledger in commit order (newest decisions last) — feeds the audit

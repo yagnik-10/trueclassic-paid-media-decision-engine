@@ -52,10 +52,12 @@ complete.**
 - **Stage 0 ✅ — Golden scenario + synthetic-truth contract**:
   canonical schemas, deterministic generator, planted defects, locked business
   invariants with tolerances.
-- **Stage 1 ✅ — Thin end-to-end shell**: Next.js page → FastAPI endpoint →
+- **Stage 1 ✅ — Thin end-to-end shell**: web UI → FastAPI endpoint →
   static canonical dataset → one **fixed** recommendation → approve/reject with a
   **stubbed** audit (idempotent approval; a rejected plan cannot execute). The
-  seam works before any real modeling.
+  seam works before any real modeling. (The original Next.js shell has since been
+  retired in favor of the Vite + React SPA in `frontend/` — see
+  `docs/DECISIONS.md` D-043.)
 - **Stage 2 ✅ — Real ingestion**: Meta `data/paging` + Google nested `results` +
   Shopify adapters flatten the raw API-shaped JSON into the canonical model, with
   two-level (envelope + record) validation & **quarantine**, deterministic **SKU
@@ -128,24 +130,24 @@ make fingerprint  # print + verify the full-artifact fingerprint (primary)
 make verify-clean-install   # build a throwaway venv from the lock and run the suite
 ```
 
-### Run the app (Stage 1 thin shell)
+### Run the app
 
-Two processes — the FastAPI backend and the Next.js frontend:
+Two processes — the FastAPI backend and the Vite/React web UI (`frontend/`):
 
 ```bash
 make api          # FastAPI backend  → http://127.0.0.1:8000  (docs at /docs)
-make web-setup    # one-time: install frontend (Next.js) deps
-make web          # Next.js frontend → http://localhost:3000
+make web-setup    # one-time: install web UI (Vite + React) deps
+make web          # Vite dev server  → http://localhost:3000
 ```
 
 Open http://localhost:3000: review the **optimizer** budget-reallocation
-recommendation (current vs recommended per campaign, marginal ROAS, reason/risk
-codes, calibrated-vs-reported ROAS, 7-day forecast, and the analysis charts) and
+recommendation (current vs recommended per campaign, marginal CM ROAS, reason/risk
+codes, calibrated-vs-reported ROAS, forecast bands, and the analysis charts) and
 **Approve** or **Reject** — an **infeasible** plan cannot be approved. Approve
 emits **stubbed** Meta/Google execution payloads (no live writes); the
 inventory-constrained campaign is flagged and not scaled. The backend is
-single-service (FastAPI) by design — Next.js already
-covers the Node/TS side.
+single-service (FastAPI) by design — the web client is a read-and-govern layer
+over its endpoints.
 
 `make setup` installs the **exact tested versions** from `requirements-lock.txt`
 (now including the FastAPI/uvicorn/httpx API stack and the scipy/scikit-learn/
@@ -243,8 +245,8 @@ backend/decision_engine/   decision-engine package
   config.py                pinned seed, paths, policy constants
   schemas/                 Pandera (canonical) + Pydantic (API envelopes)
   synth/                   scenario truth, generator, defects, envelope writers, fingerprint
-backend/api/               Stage 1 FastAPI shell (recommendation + approve/reject audit)
-frontend/                  Stage 1 Next.js page (recommendation review & approval)
+backend/api/               FastAPI shell (recommendation, ingestion, audit, marts)
+frontend/              Vite + React web UI (5-tab decision & governance client)
 scripts/                   CLI entrypoints (data generation, fingerprint verify)
 data/                      generated artifacts (gitignored)
 tests/                     engine + API test suite
@@ -253,7 +255,7 @@ docs/                      FINAL_PLAN, DECISIONS, AI_WORKFLOW
 
 ## Tech stack
 
-Next.js + TypeScript (Stage 1 frontend) · FastAPI + Python (backend) ·
+Vite + React 19 + TypeScript (web UI, `frontend/`) · FastAPI + Python (backend) ·
 DuckDB + pandas (analytics) · Pandera + Pydantic (validation) ·
 XGBoost + SciPy SLSQP (Stage 3 modeling) · Claude (Stage 5 bounded LLM,
 `claude-sonnet-4-6`, with deterministic fallbacks).
