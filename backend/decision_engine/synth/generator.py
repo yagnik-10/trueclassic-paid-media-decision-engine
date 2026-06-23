@@ -23,12 +23,16 @@ from backend.decision_engine.synth.defects import IssueLog
 # Per-platform unit economics for deriving clicks/impressions from spend.
 _PLATFORM_CPC = {"meta": 0.95, "google": 1.35}
 _PLATFORM_CTR = {"meta": 0.012, "google": 0.045}
-# New-customer share of conversions by segment (prospecting buys new customers).
+# New customers per INCREMENTAL order by segment (prospecting buys new customers).
+# Calibrated (D-048) so portfolio new-customer CAC lands in a believable DTC-apparel
+# band (~$28) instead of the prior sub-$10 figure. The prior values were a share of
+# platform-claimed conversions and produced an implausibly low CAC; these are netted
+# against incremental orders (see new_cust below).
 _NEW_CUST_RATE = {
-    "meta_prospecting": 0.72,
-    "meta_retargeting": 0.18,
-    "google_brand": 0.22,
-    "google_nonbrand": 0.55,
+    "meta_prospecting": 0.21,
+    "meta_retargeting": 0.05,
+    "google_brand": 0.06,
+    "google_nonbrand": 0.16,
 }
 # Canonical attribution window per platform; one campaign is intentionally off.
 _ATTR_WINDOW = {"meta": "7d_click_1d_view", "google": "data_driven"}
@@ -161,7 +165,13 @@ def _simulate_campaign(c: S.Campaign, dates: pd.DatetimeIndex,
 
     sku = S.PRODUCT_BY_SKU[c.primary_sku]
     platform_conv = platform_rev / sku.unit_price
-    new_cust = platform_conv * _NEW_CUST_RATE[c.segment]
+    # New customers are a first-party TRUTH quantity, not a platform claim. Derive them
+    # from INCREMENTAL (calibrated) revenue and net out returns — NOT from the platform-
+    # inflated conversions — so NC-CPA is computed on the same calibrated/incremental lens
+    # the rest of the engine uses. Using platform_conv here trusted the platform's own
+    # over-attribution and produced an implausibly low new-customer CAC (D-048).
+    incr_conv = incr_rev / sku.unit_price
+    new_cust = incr_conv * _NEW_CUST_RATE[c.segment] * (1.0 - sku.return_rate)
 
     cpc = _PLATFORM_CPC[c.platform] * rng.normal(1.0, 0.06, n).clip(0.6, 1.6)
     ctr = _PLATFORM_CTR[c.platform] * rng.normal(1.0, 0.08, n).clip(0.4, 1.8)

@@ -26,16 +26,18 @@ from backend.decision_engine.synth.fingerprint import (
 from backend.decision_engine.synth.generator import generate
 from backend.decision_engine.synth.manifest import GENERATOR_VERSION, SCHEMA_VERSION, build_manifest
 
-# golden-v3: portfolio scale (D-039) + explicit contribution economics (D-040 —
-# corrected returns/fulfillment treatment, payment fees, return handling, COGS
-# recovery; per-SKU return_rate + contribution_margin_rate changed). Prior fixtures:
+# golden-v4: new-customer derivation recalibrated (D-048 — new_customers derived from
+# INCREMENTAL revenue, net of returns, not platform-inflated conversions; _NEW_CUST_RATE
+# lowered so portfolio NC-CPA lands ~$29 instead of an implausible ~$5). Only the
+# new_customers column changes; ROAS/contribution/allocation are unchanged. Prior fixtures:
 #   golden-v1 ($24K)    canonical 8873f413…890a4 · full aa27fe98…6e7e3
 #   golden-v2 (scale)   canonical 08643f3f…731e9 · full de83a25f…892a59
+#   golden-v3 (econ)    canonical 8a302b78…896c9b0 · full 637647ff…11fe73c2
 EXPECTED_CANONICAL_TABLES_FINGERPRINT = (
-    "8a302b78aab0af9bfefa08b14d2aacc5951208f9aa7337d1124e8152d896c9b0"
+    "f5eae5f04c8073c8e7b202ec5af7db66efc553d94770e945b6d8a6f50dbbc3fd"
 )
 EXPECTED_FULL_ARTIFACT_FINGERPRINT = (
-    "637647ffc09390970b96fc1aaa990d2b5423f8193a955f22fa4c013c11fe73c2"
+    "b49eda30aefc8c92a3804eea31be18e09ca308bd51662d73e9975a0eb177dc0d"
 )
 
 # The 'realistic' profile (D-034) shares the latent response truth but adds
@@ -44,11 +46,12 @@ EXPECTED_FULL_ARTIFACT_FINGERPRINT = (
 # stays the tight known-truth benchmark above). Prior fixtures:
 #   realistic-v1 ($24K)  canonical 66b5dd59…a6cc5 · full a7644691…1fe10
 #   realistic-v2 (scale) canonical 4fa2a271…30d4a3 · full a31fefee…49ffcf
+#   realistic-v3 (econ)  canonical 7ebbdf0b…950b2b · full 399eefaa…acc276
 EXPECTED_REALISTIC_CANONICAL_TABLES_FINGERPRINT = (
-    "7ebbdf0b9e835a47d28318155c611275eadad3dc3b5ea8450f67f98498950b2b"
+    "11250e90f2fffea304af8ee446a39513bfa6e81c6973ed86a900165bdc12435a"
 )
 EXPECTED_REALISTIC_FULL_ARTIFACT_FINGERPRINT = (
-    "399eefaa6abd04f7538c8bcce05b80037162082e509ed6325801561671acc276"
+    "a0f765f67ba75a7b50776ca99a84ecd449a4e46d141b35056122c0881602068a"
 )
 
 

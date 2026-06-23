@@ -75,7 +75,7 @@ cd frontend; npm install; npm run dev                           # UI → http://
 - **Forecasting** — XGBoost **quantile** P10/P50/P90 (monotone in spend), validated on
   gap-aware walk-forward folds and **promoted over naive baselines only when it *materially*
   beats them** (one shared selector used by both the engine and the eval report). 80%
-  intervals are **conformal-calibrated** (held-out coverage ≈ 83% vs ≈ 43% raw).
+  intervals are **conformal-calibrated** (held-out coverage ≈ 81% vs ≈ 40% raw, target 80%).
 - **Response model** — orthogonalized **double-ML / FWL on adstocked spend** recovers the
   **marginal-ROAS ordering** from confounded observational data (validated against the
   known synthetic truth — see the honest limit below).
